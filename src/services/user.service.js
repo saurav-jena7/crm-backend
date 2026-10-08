@@ -6,53 +6,74 @@ const { sanitizeUser, paginate, buildSortObject } = require('../utils/helpers');
 
 /**
  * Returns a paginated list of users with optional filtering.
+ *
  * @param {object} filters - { role?, isActive?, search? }
  * @param {number} page
  * @param {number} limit
  * @param {string} sort  - e.g. '-createdAt'
- * @returns {{ users, total, page, totalPages }}
+ * @returns {{ users, pagination }}
  */
 exports.getAllUsers = async (filters = {}, page = 1, limit = 10, sort = '-createdAt') => {
   const query = {};
 
+  // Filter by role
   if (filters.role) query.role = filters.role;
-  if (filters.isActive !== undefined) query.isActive = filters.isActive;
 
-  if (filters.search) {
-    const regex = new RegExp(filters.search, 'i');
+  // Filter by active status — accepts boolean or 'true'/'false' string
+  if (filters.isActive !== undefined && filters.isActive !== '') {
+    query.isActive =
+      typeof filters.isActive === 'boolean'
+        ? filters.isActive
+        : filters.isActive === 'true';
+  }
+
+  // Search by name or email (case-insensitive)
+  if (filters.search && filters.search.trim()) {
+    const regex = new RegExp(filters.search.trim(), 'i');
     query.$or = [{ name: regex }, { email: regex }];
   }
 
-  const { skip, limit: parsedLimit } = paginate(null, page, limit);
-  const sortObj = buildSortObject(sort);
+  const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+  const { skip } = paginate(null, parsedPage, parsedLimit);
+  const sortObj = buildSortObject(sort || '-createdAt');
 
-  const [users, total] = await Promise.all([
-    User.find(query).sort(sortObj).skip(skip).limit(parsedLimit),
+  const [users, totalRecords] = await Promise.all([
+    User.find(query)
+      .populate('manager', 'name email')
+      .sort(sortObj)
+      .skip(skip)
+      .limit(parsedLimit),
     User.countDocuments(query),
   ]);
 
   return {
     users: users.map(sanitizeUser),
-    total,
-    page: parseInt(page, 10),
-    totalPages: Math.ceil(total / parsedLimit),
+    pagination: {
+      currentPage: parsedPage,
+      pageSize: parsedLimit,
+      totalRecords,
+      totalPages: Math.ceil(totalRecords / parsedLimit),
+    },
   };
 };
 
 /**
- * Returns a single user by ID.
+ * Returns a single user by ID (with manager populated).
  * @param {string} id
  * @returns {object} Sanitized user
  */
 exports.getUserById = async (id) => {
-  const user = await User.findById(id);
+  const user = await User.findById(id).populate('manager', 'name email role');
   if (!user) throw new AppError('User not found', 404);
   return sanitizeUser(user);
 };
 
 /**
- * Creates a new user.
- * @param {object} data
+ * Creates a new user (Admin only).
+ * Password is hashed automatically by the pre-save hook.
+ *
+ * @param {object} data - { name, email, password, role, phone?, manager? }
  * @returns {object} Sanitized user
  */
 exports.createUser = async (data) => {
@@ -61,18 +82,30 @@ exports.createUser = async (data) => {
 };
 
 /**
- * Updates a user. Password changes are not allowed through this method.
+ * Updates a user's non-sensitive fields.
+ * Password changes are blocked here — use a dedicated change-password flow.
+ *
  * @param {string} id
  * @param {object} data
+ * @param {string} requesterId - Admin's own ID (prevents self role-downgrade)
  * @returns {object} Sanitized user
  */
-exports.updateUser = async (id, data) => {
-  // Never allow password changes through this pathway
+exports.updateUser = async (id, data, requesterId) => {
+  // Hard strip of sensitive fields — these cannot be changed via this endpoint
   const safeData = { ...data };
   delete safeData.password;
   delete safeData.refreshToken;
 
-  const user = await User.findByIdAndUpdate(id, safeData, { new: true, runValidators: true });
+  // Prevent admin from accidentally removing their own admin role
+  if (String(id) === String(requesterId) && safeData.role && safeData.role !== 'admin') {
+    throw new AppError('You cannot change your own role', 403);
+  }
+
+  const user = await User.findByIdAndUpdate(id, safeData, {
+    new: true,
+    runValidators: true,
+  }).populate('manager', 'name email');
+
   if (!user) throw new AppError('User not found', 404);
   return sanitizeUser(user);
 };
@@ -112,7 +145,11 @@ exports.deleteUser = async (id, requesterId) => {
   if (String(id) === String(requesterId)) {
     throw new AppError('You cannot delete your own account', 403);
   }
-  const user = await User.findByIdAndUpdate(id, { isActive: false }, { new: true });
+  const user = await User.findByIdAndUpdate(
+    id,
+    { isActive: false },
+    { new: true }
+  );
   if (!user) throw new AppError('User not found', 404);
   return sanitizeUser(user);
 };

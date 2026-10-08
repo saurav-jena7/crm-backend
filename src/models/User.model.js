@@ -37,6 +37,7 @@ const userSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
     refreshToken: {
       type: String,
@@ -47,10 +48,15 @@ const userSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null,
+      index: true,
     },
   },
   { timestamps: true }
 );
+
+// Additional compound indexes for common query patterns
+userSchema.index({ role: 1, isActive: 1 });
+userSchema.index({ createdAt: -1 });
 
 // Hash password before saving — only when the password field was modified
 userSchema.pre('save', async function (next) {

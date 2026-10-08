@@ -4,7 +4,7 @@ const { z } = require('zod');
 
 const objectIdRegex = /^[0-9a-fA-F]{24}$/;
 
-/** Schema for admin POST /api/users — role is required here */
+/** Schema for admin POST /api/users — all fields required except phone/manager */
 const createUserSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name cannot exceed 100 characters'),
   email: z.string().email('Invalid email address'),
@@ -16,12 +16,20 @@ const createUserSchema = z.object({
     required_error: 'Role is required',
   }),
   phone: z.string().optional(),
-  // Link a sales_executive to their manager for team-scoping
   manager: z.string().regex(objectIdRegex, 'Invalid manager ID').optional().nullable(),
 });
 
-/** Schema for PATCH /api/users/:id — all fields optional */
-const updateUserSchema = createUserSchema.partial();
+/**
+ * Schema for PUT /api/users/:id
+ * Password is intentionally excluded — use change-password endpoint for that.
+ */
+const updateUserSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  email: z.string().email('Invalid email address').optional(),
+  role: z.enum(['admin', 'sales_manager', 'sales_executive']).optional(),
+  phone: z.string().optional(),
+  manager: z.string().regex(objectIdRegex, 'Invalid manager ID').optional().nullable(),
+});
 
 /** Schema for POST /api/users/change-password */
 const changePasswordSchema = z.object({
