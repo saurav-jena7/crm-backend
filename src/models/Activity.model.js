@@ -8,6 +8,7 @@ const activitySchema = new mongoose.Schema(
       type: String,
       required: [true, 'Activity type is required'],
       enum: ['call', 'email', 'meeting', 'demo', 'follow_up', 'reminder', 'note'],
+      index: true,
     },
     title: {
       type: String,
@@ -20,30 +21,36 @@ const activitySchema = new mongoose.Schema(
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+      index: true,
     },
     dueDate: {
       type: Date,
+      index: true,
     },
     status: {
       type: String,
       enum: ['pending', 'completed', 'overdue'],
       default: 'pending',
+      index: true,
     },
+    // An activity may be associated with: Lead, Customer, Deal, or User
     relatedTo: {
+      // The ID of the related entity
       entityId: {
         type: mongoose.Schema.Types.ObjectId,
-        required: [true, 'entityId is required'],
+        index: true,
       },
+      // The type of the related entity
       entityType: {
         type: String,
-        required: [true, 'entityType is required'],
-        enum: ['lead', 'customer', 'deal'],
+        enum: ['lead', 'customer', 'deal', 'user'],  // spec: Lead, Customer, Deal, User
       },
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'createdBy is required'],
+      index: true,
     },
     completedAt: {
       type: Date,
@@ -52,8 +59,11 @@ const activitySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound index for querying pending/overdue activities by due date
+// Compound indexes for common query patterns
 activitySchema.index({ status: 1, dueDate: 1 });
+activitySchema.index({ assignedTo: 1, status: 1 });
+activitySchema.index({ 'relatedTo.entityId': 1, 'relatedTo.entityType': 1 });
+activitySchema.index({ createdAt: -1 });
 
 const Activity = mongoose.model('Activity', activitySchema);
 
