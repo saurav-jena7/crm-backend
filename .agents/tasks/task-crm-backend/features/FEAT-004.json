@@ -1,0 +1,44 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "HTTP layer: all controllers, all routes, app.js, server.js, and README.md. Depends on all previous FEATs. Controllers are thin wrappers over services; routes wire validators + auth middleware + controllers. app.js assembles everything; server.js is the entry point.",
+  "status": "completed",
+  "steps": [
+    "Create backend/src/controllers/auth.controller.js: require auth.service. register: call service.register(req.body), set httpOnly cookie 'refreshToken', return 201 {success:true,data:{user,accessToken}}. login: same pattern. logout: call service.logout(req.user._id), clear cookie, return 200. refreshToken: get token from req.cookies.refreshToken||req.body.refreshToken; call service.refreshTokens(token), set new cookie, return 200 {accessToken,refreshToken}. getMe: return 200 {success:true,data:{user:sanitizeUser(req.user)}}.",
+    "Create backend/src/controllers/user.controller.js: getAllUsers, getUserById, createUser, updateUser, deleteUser — each calls corresponding user.service method, wraps in try/catch passing to next(), returns appropriate status codes (200/201/204). getAllUsers passes req.query page/limit/sort/role/isActive as filters.",
+    "Create backend/src/controllers/lead.controller.js: getAllLeads, getLead, createLead, updateLead, deleteLead, updateLeadStatus, assignLead, convertLead — thin wrappers on lead.service, pass req.user as needed. createLead/updateLead pass req.user._id as createdBy/performedBy. convertLead calls service.convertLead, returns 200 {customer, deal}.",
+    "Create backend/src/controllers/customer.controller.js: getAllCustomers, getCustomer, createCustomer, updateCustomer, deleteCustomer — thin wrappers on customer.service.",
+    "Create backend/src/controllers/deal.controller.js: getAllDeals, getDeal, createDeal, updateDeal, deleteDeal, updateDealStage — thin wrappers. updateDealStage passes req.user._id as performedBy and req.user.role for transition permission check.",
+    "Create backend/src/controllers/activity.controller.js: getAllActivities, getActivity, createActivity, updateActivity, deleteActivity, completeActivity — thin wrappers. completeActivity passes req.user._id.",
+    "Create backend/src/controllers/timeline.controller.js: getLeadTimeline (entityType='lead', entityId=req.params.id), getCustomerTimeline (entityType='customer'), getDealTimeline (entityType='deal') — all call TimelineService.getTimeline, return paginated results.",
+    "Create backend/src/controllers/dashboard.controller.js: getStats, getPipeline, getTeamPerformance (pass req.query.startDate/endDate), getRecentActivities (pass req.query.limit) — call dashboard.service methods.",
+    "Create backend/src/routes/auth.routes.js: const router=express.Router(); POST /register validate(registerSchema) + authController.register; POST /login validate(loginSchema) + authController.login; POST /logout authenticate + authController.logout; POST /refresh-token authController.refreshToken; GET /me authenticate + authController.getMe. module.exports=router.",
+    "Create backend/src/routes/user.routes.js: all routes behind authenticate+authorize('admin'). GET / getAllUsers; POST / validate(createUserSchema) createUser; GET /:id getUserById; PUT /:id validate(updateUserSchema) updateUser; DELETE /:id deleteUser.",
+    "Create backend/src/routes/lead.routes.js: authenticate on all. GET / getAllLeads; POST / validate(createLeadSchema) createLead; GET /:id getLead; PUT /:id validate(updateLeadSchema) updateLead; DELETE /:id authorize('admin','sales_manager') deleteLead; PATCH /:id/status validate(z.object({status:...})) updateLeadStatus; PATCH /:id/assign authorize('admin','sales_manager') validate(assignLeadSchema) assignLead; POST /:id/convert authorize('admin','sales_manager') validate(convertLeadSchema) convertLead.",
+    "Create backend/src/routes/customer.routes.js: authenticate on all. Standard CRUD — GET / POST / GET /:id PUT /:id DELETE /:id — with appropriate validators and authorize for delete.",
+    "Create backend/src/routes/deal.routes.js: authenticate on all. Standard CRUD + PATCH /:id/stage validate(updateStageSchema) updateDealStage.",
+    "Create backend/src/routes/activity.routes.js: authenticate on all. Standard CRUD + PATCH /:id/complete completeActivity.",
+    "Create backend/src/routes/timeline.routes.js: authenticate on all. GET /lead/:id getLeadTimeline; GET /customer/:id getCustomerTimeline; GET /deal/:id getDealTimeline.",
+    "Create backend/src/routes/dashboard.routes.js: authenticate on all. GET /stats getStats; GET /pipeline getPipeline; GET /team-performance authorize('admin','sales_manager') getTeamPerformance; GET /recent-activities getRecentActivities.",
+    "Create backend/app.js: require('dotenv').config(); const express=require('express'); const helmet=require('helmet'); const cors=require('cors'); const morgan=require('morgan'); const cookieParser=require('cookie-parser'); const rateLimit=require('express-rate-limit'); const errorHandler=require('./src/middleware/errorHandler'); const AppError=require('./src/utils/AppError'); const app=express(); app.use(helmet()); app.use(cors({origin:process.env.ALLOWED_ORIGINS?.split(','),credentials:true})); app.use(morgan(process.env.NODE_ENV==='production'?'combined':'dev')); app.use(express.json({limit:'10kb'})); app.use(express.urlencoded({extended:true})); app.use(cookieParser()); const limiter=rateLimit({windowMs:15*60*1000,max:100,message:'Too many requests'}); app.use('/api',limiter); mount all 8 routers: app.use('/api/auth',authRoutes); app.use('/api/users',userRoutes); etc. app.all('*',(req,res,next)=>next(new AppError(`Route ${req.originalUrl} not found`,404))); app.use(errorHandler); module.exports=app.",
+    "Create backend/server.js: require('dotenv').config(); const app=require('./app'); const {connectDB}=require('./src/config/database'); const PORT=process.env.PORT||5000; const start=async()=>{ await connectDB(); const server=app.listen(PORT,()=>console.log(`Server running on port ${PORT} in ${process.env.NODE_ENV} mode`)); process.on('unhandledRejection',(err)=>{ console.error('Unhandled rejection:',err); server.close(()=>process.exit(1)); }); process.on('uncaughtException',(err)=>{ console.error('Uncaught exception:',err); process.exit(1); }); }; start();",
+    "Create backend/README.md: sections — Overview, Tech Stack, Prerequisites, Installation (git clone, cd backend, npm install, cp .env.example .env, fill in vars, npm run dev), Environment Variables table, API Endpoints reference table (all 40+ endpoints with method/path/auth/description), Role Permissions table (admin/sales_manager/sales_executive capabilities), Data Models brief description, Error Response format."
+  ],
+  "acceptance_criteria": [
+    "All 8 controller files exist and export their handler functions",
+    "All 8 route files exist and export an Express Router",
+    "app.js applies helmet, cors, rate-limit, mounts all 8 route prefixes, and has global error handler last",
+    "server.js calls connectDB() before app.listen()",
+    "GET /api/auth/me without token returns 401",
+    "POST /api/auth/register with missing email returns 400 with validation error",
+    "npm start exits cleanly on DB connection error (graceful error log, not crash without message)",
+    "README.md covers all environment variables and endpoints"
+  ],
+  "verification": [
+    "node -e \"const app=require('./app'); console.log(typeof app)\" — prints 'function' (Express app is a function)",
+    "node -e \"const r=require('./src/routes/lead.routes'); console.log(r.stack.length)\" — prints number > 5 (routes registered)",
+    "npm start 2>&1 | head -5 — shows server start attempt (will fail without DB but module loading should succeed)"
+  ],
+  "blocked_reason": null,
+  "findings": "All 8 controllers and 8 route files created. app.js verified (typeof === 'function'). lead.routes stack=9, auth.routes stack=5. server.js wraps connectDB() with try/catch for graceful startup failure. README covers all env vars, 40+ endpoints, role permissions, data models, and error format."
+}

@@ -1,0 +1,39 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Project foundation: package.json, .env.example, config files (database + JWT), utilities (AppError + helpers), and all 6 Mongoose models. These files have no dependency on each other's runtime output — they can all be created in one pass. Every subsequent FEAT depends on this one.",
+  "status": "completed",
+  "steps": [
+    "Create backend/package.json with name 'crm-backend', version '1.0.0', main 'server.js'. Dependencies: express@^4.18.2, mongoose@^7.6.3, jsonwebtoken@^9.0.2, bcryptjs@^2.4.3, zod@^3.22.4, swagger-ui-express@^5.0.0, swagger-jsdoc@^6.2.8, helmet@^7.1.0, cors@^2.8.5, express-rate-limit@^7.1.5, morgan@^1.10.0, dotenv@^16.3.1, cookie-parser@^1.4.6. DevDependencies: nodemon@^3.0.1. Scripts: start='node server.js', dev='nodemon server.js'.",
+    "Create backend/.env.example with all required env vars: PORT=5000, MONGODB_URI=mongodb://localhost:27017/crm_db, JWT_ACCESS_SECRET=your_access_secret_here, JWT_ACCESS_EXPIRES_IN=15m, JWT_REFRESH_SECRET=your_refresh_secret_here, JWT_REFRESH_EXPIRES_IN=7d, NODE_ENV=development, ALLOWED_ORIGINS=http://localhost:3000.",
+    "Create backend/src/config/database.js: exports connectDB() async function that calls mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true }). Logs 'MongoDB connected: <host>' on success, throws on failure.",
+    "Create backend/src/config/jwt.js: exports generateAccessToken(payload), generateRefreshToken(payload), verifyAccessToken(token), verifyRefreshToken(token). Uses process.env.JWT_ACCESS_SECRET / JWT_REFRESH_SECRET. generateAccessToken signs with expiresIn: process.env.JWT_ACCESS_EXPIRES_IN. Throws AppError(401) on verification failure.",
+    "Create backend/src/utils/AppError.js: class AppError extends Error { constructor(message, statusCode, errors=[]) { super(message); this.statusCode=statusCode; this.status=statusCode>=500?'error':'fail'; this.isOperational=true; this.errors=errors; Error.captureStackTrace(this,this.constructor); } }. module.exports = AppError.",
+    "Create backend/src/utils/helpers.js: export paginate(query, page=1, limit=10) returning { skip:(page-1)*limit, limit:parseInt(limit) }; buildSortObject(sortStr) converting 'field,-field2' to mongoose sort object; sanitizeUser(userDoc) calling userDoc.toObject() then delete obj.password, delete obj.refreshToken, return obj; isOverdue(dueDate, status) returning dueDate < new Date() && status === 'pending'.",
+    "Create backend/src/models/User.model.js: Schema fields — name (String, required, trim, maxlength:100), email (String, required, unique, lowercase, trim, index:true), phone (String, trim), password (String, required, minlength:8, select:false), role (String, enum:['admin','sales_manager','sales_executive'], default:'sales_executive'), isActive (Boolean, default:true), refreshToken (String, select:false). Timestamps:true. Pre-save hook: if password modified, hash with bcryptjs.hash(this.password, 12). Instance method comparePassword(candidate): return bcryptjs.compare(candidate, this.password).",
+    "Create backend/src/models/Lead.model.js: Schema fields — name (String, required, trim), email (String, lowercase, trim), phone (String, trim), company (String, trim), source (String, enum:['website','referral','social_media','email','phone','other'], default:'other'), status (String, enum:['new','contacted','qualified','unqualified','converted','lost'], default:'new'), priority (String, enum:['low','medium','high'], default:'medium'), assignedTo (ObjectId, ref:'User'), description (String), createdBy (ObjectId, ref:'User', required), convertedAt (Date), convertedCustomer (ObjectId, ref:'Customer'), convertedDeal (ObjectId, ref:'Deal'). Timestamps:true. Compound index on {status:1, assignedTo:1}.",
+    "Create backend/src/models/Customer.model.js: Schema fields — name (String, required, trim), email (String, lowercase, trim), phone (String, trim), company (String, trim), address ({street,city,state,country,zip} all String), originalLead (ObjectId, ref:'Lead'), assignedTo (ObjectId, ref:'User'), status (String, enum:['active','inactive'], default:'active'), createdBy (ObjectId, ref:'User', required). Timestamps:true.",
+    "Create backend/src/models/Deal.model.js: Schema fields — title (String, required, trim), lead (ObjectId, ref:'Lead'), customer (ObjectId, ref:'Customer'), assignedTo (ObjectId, ref:'User'), value (Number, default:0, min:0), probability (Number, default:0, min:0, max:100), expectedCloseDate (Date), stage (String, enum:['qualification','discovery','proposal','negotiation','won','lost'], default:'qualification'), description (String), lostReason (String), wonAt (Date), lostAt (Date), createdBy (ObjectId, ref:'User', required). Virtual expectedRevenue: this.value*(this.probability/100). Set toJSON/toObject {virtuals:true}. Pre-save: if stage changed to 'won' set wonAt=Date.now(); if changed to 'lost' set lostAt=Date.now(). Timestamps:true. Index on {stage:1, assignedTo:1}.",
+    "Create backend/src/models/Activity.model.js: Schema fields — type (String, required, enum:['call','email','meeting','demo','follow_up','reminder','note']), title (String, required, trim), description (String), assignedTo (ObjectId, ref:'User'), dueDate (Date), status (String, enum:['pending','completed','overdue'], default:'pending'), relatedTo: { entityId: (ObjectId, required), entityType: (String, required, enum:['lead','customer','deal']) }, createdBy (ObjectId, ref:'User', required), completedAt (Date). Timestamps:true. Compound index on {status:1, dueDate:1}.",
+    "Create backend/src/models/Timeline.model.js: Schema fields — action (String, required), entityType (String, required, enum:['lead','customer','deal','user']), entityId (ObjectId, required, index:true), performedBy (ObjectId, ref:'User'), previousValue (Schema.Types.Mixed), newValue (Schema.Types.Mixed), description (String). Timestamps:true (createdAt used for ordering). Compound index on {entityType:1, entityId:1}. Export as Timeline."
+  ],
+  "acceptance_criteria": [
+    "backend/package.json is valid JSON with all listed dependencies",
+    "backend/.env.example contains all 8 env var keys",
+    "backend/src/config/database.js exports a connectDB function",
+    "backend/src/config/jwt.js exports generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken",
+    "backend/src/utils/AppError.js exports a class with isOperational=true",
+    "backend/src/utils/helpers.js exports paginate, sanitizeUser, isOverdue",
+    "All 6 model files exist and export a Mongoose model",
+    "User model has comparePassword instance method and password select:false",
+    "Deal model has expectedRevenue virtual",
+    "Running 'npm install' in backend/ completes without errors"
+  ],
+  "verification": [
+    "cd 'c:\\Users\\KIIT0001\\Desktop\\Project\\CRM Sales Management System\\backend' && npm install",
+    "node -e \"const AppError = require('./src/utils/AppError'); const e = new AppError('test',400); console.log(e.isOperational, e.statusCode)\" — prints 'true 400'",
+    "node -e \"const m = require('./src/models/User.model'); console.log(typeof m.schema.methods.comparePassword)\" — prints 'function'"
+  ],
+  "blocked_reason": null,
+  "findings": "All files created and verified. npm install succeeded (185 packages). AppError: isOperational=true, statusCode=400 ✓. User.schema.methods.comparePassword: function ✓. Deal model loads OK with virtual expectedRevenue ✓. 3 high-severity audit warnings exist in transitive deps (swagger-ui-express/nodemon) — not introduced by this feature."
+}
