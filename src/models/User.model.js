@@ -42,6 +42,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       select: false,
     },
+    // Sales executives can be linked to a sales manager for team scoping
+    manager: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   { timestamps: true }
 );

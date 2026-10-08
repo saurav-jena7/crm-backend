@@ -1,26 +1,26 @@
 'use strict';
 
 const Deal = require('../models/Deal.model');
+const User = require('../models/User.model');
 const AppError = require('../utils/AppError');
 const TimelineService = require('./timeline.service');
 const { paginate, buildSortObject } = require('../utils/helpers');
 
 /**
  * Returns a paginated list of deals.
- * Sales executives only see their own deals.
- *
- * @param {object} filters
- * @param {object} user  - { _id, role }
- * @param {number} page
- * @param {number} limit
- * @param {string} sort
- * @returns {{ deals, total, page, totalPages }}
+ * - Admin: all deals
+ * - Sales Manager: deals assigned to their team or themselves
+ * - Sales Executive: only their own deals
  */
 exports.getAllDeals = async (filters = {}, user, page = 1, limit = 10, sort = '-createdAt') => {
   const query = { ...filters };
 
   if (user.role === 'sales_executive') {
     query.assignedTo = user._id;
+  } else if (user.role === 'sales_manager') {
+    const teamMembers = await User.find({ manager: user._id, isActive: true }).select('_id');
+    const teamIds = teamMembers.map((m) => m._id);
+    query.$or = [{ assignedTo: { $in: [...teamIds, user._id] } }, { assignedTo: null }];
   }
 
   const { skip, limit: parsedLimit } = paginate(null, page, limit);

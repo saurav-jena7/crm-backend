@@ -57,11 +57,31 @@ exports.updateUser = async (req, res, next) => {
 };
 
 /**
+ * PATCH /api/users/:id/status
+ */
+exports.toggleUserStatus = async (req, res, next) => {
+  try {
+    const { isActive } = req.body;
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'isActive must be a boolean' });
+    }
+    const user = await userService.toggleUserStatus(req.params.id, isActive, req.user._id);
+    res.status(200).json({
+      success: true,
+      message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
+      data: { user },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * DELETE /api/users/:id
  */
 exports.deleteUser = async (req, res, next) => {
   try {
-    await userService.deleteUser(req.params.id);
+    await userService.deleteUser(req.params.id, req.user._id);
     res.status(204).send();
   } catch (err) {
     next(err);

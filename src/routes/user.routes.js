@@ -23,6 +23,9 @@ router.get('/:id', userController.getUserById);
 // PUT /api/users/:id
 router.put('/:id', validate(updateUserSchema), userController.updateUser);
 
+// PATCH /api/users/:id/status — activate or deactivate a user
+router.patch('/:id/status', userController.toggleUserStatus);
+
 // DELETE /api/users/:id
 router.delete('/:id', userController.deleteUser);
 

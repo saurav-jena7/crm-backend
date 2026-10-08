@@ -9,6 +9,7 @@ const validate = require('../middleware/validate');
 const {
   createLeadSchema,
   updateLeadSchema,
+  updateLeadStatusSchema,
   assignLeadSchema,
   convertLeadSchema,
 } = require('../validators/lead.validators');
@@ -19,20 +20,20 @@ router.use(authenticate);
 // GET /api/leads
 router.get('/', leadController.getAllLeads);
 
-// POST /api/leads
+// POST /api/leads — all roles can create leads
 router.post('/', validate(createLeadSchema), leadController.createLead);
 
 // GET /api/leads/:id
 router.get('/:id', leadController.getLead);
 
-// PUT /api/leads/:id
+// PUT /api/leads/:id — sales_executive can only update their own (enforced in service)
 router.put('/:id', validate(updateLeadSchema), leadController.updateLead);
 
-// DELETE /api/leads/:id — admin and sales_manager only
-router.delete('/:id', authorize('admin', 'sales_manager'), leadController.deleteLead);
+// DELETE /api/leads/:id — admin only
+router.delete('/:id', authorize('admin'), leadController.deleteLead);
 
-// PATCH /api/leads/:id/status
-router.patch('/:id/status', leadController.updateLeadStatus);
+// PATCH /api/leads/:id/status — all roles; service enforces ownership for executives
+router.patch('/:id/status', validate(updateLeadStatusSchema), leadController.updateLeadStatus);
 
 // PATCH /api/leads/:id/assign — admin and sales_manager only
 router.patch(
@@ -42,10 +43,10 @@ router.patch(
   leadController.assignLead
 );
 
-// POST /api/leads/:id/convert — admin and sales_manager only
+// POST /api/leads/:id/convert — all roles; only sales_executive converts their assigned leads,
+// admin/manager can convert any qualified lead
 router.post(
   '/:id/convert',
-  authorize('admin', 'sales_manager'),
   validate(convertLeadSchema),
   leadController.convertLead
 );

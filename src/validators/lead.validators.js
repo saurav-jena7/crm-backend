@@ -24,6 +24,13 @@ const createLeadSchema = z.object({
   description: z.string().optional(),
 });
 
+/** Schema for PATCH /api/leads/:id/status */
+const updateLeadStatusSchema = z.object({
+  status: z.enum(['new', 'contacted', 'qualified', 'unqualified', 'converted', 'lost'], {
+    required_error: 'Status is required',
+  }),
+});
+
 /** Schema for PATCH /api/leads/:id */
 const updateLeadSchema = createLeadSchema.partial();
 
@@ -50,4 +57,4 @@ const convertLeadSchema = z.object({
     .optional(),
 });
 
-module.exports = { createLeadSchema, updateLeadSchema, assignLeadSchema, convertLeadSchema };
+module.exports = { createLeadSchema, updateLeadSchema, updateLeadStatusSchema, assignLeadSchema, convertLeadSchema };

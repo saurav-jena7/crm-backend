@@ -11,7 +11,10 @@ const { paginate, buildSortObject } = require('../utils/helpers');
 
 /**
  * Returns a paginated list of leads.
- * Sales executives only see their own leads.
+ * - Admin: all leads
+ * - Sales Manager: leads assigned to their direct reports (sales_executives with manager=this user)
+ *   plus unassigned leads
+ * - Sales Executive: only leads assigned to them
  *
  * @param {object} filters
  * @param {object} user  - { _id, role }
@@ -25,6 +28,12 @@ exports.getAllLeads = async (filters = {}, user, page = 1, limit = 10, sort = '-
 
   if (user.role === 'sales_executive') {
     query.assignedTo = user._id;
+  } else if (user.role === 'sales_manager') {
+    // Find all executives reporting to this manager
+    const teamMembers = await User.find({ manager: user._id, isActive: true }).select('_id');
+    const teamIds = teamMembers.map((m) => m._id);
+    // See their own leads + team leads (assignedTo in team or unassigned)
+    query.$or = [{ assignedTo: { $in: [...teamIds, user._id] } }, { assignedTo: null }];
   }
 
   const { skip, limit: parsedLimit } = paginate(null, page, limit);
@@ -136,14 +145,30 @@ exports.deleteLead = async (id) => {
 
 /**
  * Changes the status of a lead and records a timeline entry.
+ * Sales executives can only update status on leads assigned to them.
+ * Converting a lead to 'converted' via this endpoint is blocked — use convertLead instead.
+ *
  * @param {string} id
  * @param {string} status
- * @param {string} performedBy
+ * @param {object} user - { _id, role }
  * @returns {object} Updated lead document
  */
-exports.updateLeadStatus = async (id, status, performedBy) => {
+exports.updateLeadStatus = async (id, status, user) => {
   const lead = await Lead.findById(id);
   if (!lead) throw new AppError('Lead not found', 404);
+
+  // Sales executives can only update leads assigned to them
+  if (
+    user.role === 'sales_executive' &&
+    String(lead.assignedTo) !== String(user._id)
+  ) {
+    throw new AppError('You can only update status of leads assigned to you', 403);
+  }
+
+  // 'converted' status is only set by the convertLead flow
+  if (status === 'converted') {
+    throw new AppError('Use the convert endpoint to convert a lead', 400);
+  }
 
   const previousValue = { status: lead.status };
 
@@ -154,7 +179,7 @@ exports.updateLeadStatus = async (id, status, performedBy) => {
     action: 'Status changed',
     entityType: 'lead',
     entityId: id,
-    performedBy,
+    performedBy: user._id,
     previousValue,
     newValue: { status },
   });
@@ -195,16 +220,18 @@ exports.assignLead = async (id, assigneeId, performedBy) => {
 
 /**
  * Converts a lead into a Customer + Deal using a MongoDB transaction.
+ * - Admins/Managers can convert any qualified lead.
+ * - Sales Executives can only convert leads assigned to them.
  *
  * @param {string} id - Lead ID to convert
  * @param {object} conversionData - { dealTitle, dealValue, dealStage, expectedCloseDate, customerData }
- * @param {string} performedBy - User ID performing the conversion
+ * @param {object} performer - { _id, role } of the user performing the conversion
  * @returns {{ customer, deal }}
  */
 exports.convertLead = async (
   id,
   { dealTitle, dealValue, dealStage, expectedCloseDate, customerData = {} },
-  performedBy
+  performer
 ) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -213,19 +240,28 @@ exports.convertLead = async (
     const lead = await Lead.findById(id).session(session);
     if (!lead) throw new AppError('Lead not found', 404);
     if (lead.status === 'converted') throw new AppError('Lead is already converted', 400);
+    if (lead.status !== 'qualified') throw new AppError('Only qualified leads can be converted', 400);
+
+    // Sales executives can only convert their own assigned leads
+    if (
+      performer.role === 'sales_executive' &&
+      String(lead.assignedTo) !== String(performer._id)
+    ) {
+      throw new AppError('You can only convert leads assigned to you', 403);
+    }
 
     // Create Customer — array form required when passing a session
     const customer = await Customer.create(
       [
         {
-          name: lead.name,
-          email: lead.email,
-          phone: lead.phone,
-          company: lead.company,
+          name: customerData.name || lead.name,
+          email: customerData.email || lead.email,
+          phone: customerData.phone || lead.phone,
+          company: customerData.company || lead.company,
           ...customerData,
           originalLead: lead._id,
           assignedTo: lead.assignedTo,
-          createdBy: performedBy,
+          createdBy: performer._id,
         },
       ],
       { session }
@@ -242,7 +278,7 @@ exports.convertLead = async (
           value: dealValue,
           stage: dealStage || 'qualification',
           expectedCloseDate,
-          createdBy: performedBy,
+          createdBy: performer._id,
         },
       ],
       { session }
@@ -265,7 +301,7 @@ exports.convertLead = async (
       action: 'Lead converted to customer',
       entityType: 'lead',
       entityId: id,
-      performedBy,
+      performedBy: performer._id,
       session,
     });
 
@@ -273,7 +309,7 @@ exports.convertLead = async (
       action: 'Customer created from lead',
       entityType: 'customer',
       entityId: customer[0]._id,
-      performedBy,
+      performedBy: performer._id,
       session,
     });
 
@@ -281,7 +317,7 @@ exports.convertLead = async (
       action: 'Deal created from lead',
       entityType: 'deal',
       entityId: deal[0]._id,
-      performedBy,
+      performedBy: performer._id,
       session,
     });
 

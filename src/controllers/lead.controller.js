@@ -74,8 +74,8 @@ exports.deleteLead = async (req, res, next) => {
  */
 exports.updateLeadStatus = async (req, res, next) => {
   try {
-    const lead = await leadService.updateLeadStatus(req.params.id, req.body.status, req.user._id);
-    res.status(200).json({ success: true, data: { lead } });
+    const lead = await leadService.updateLeadStatus(req.params.id, req.body.status, req.user);
+    res.status(200).json({ success: true, message: 'Lead status updated', data: { lead } });
   } catch (err) {
     next(err);
   }
@@ -87,7 +87,7 @@ exports.updateLeadStatus = async (req, res, next) => {
 exports.assignLead = async (req, res, next) => {
   try {
     const lead = await leadService.assignLead(req.params.id, req.body.assignedTo, req.user._id);
-    res.status(200).json({ success: true, data: { lead } });
+    res.status(200).json({ success: true, message: 'Lead assigned successfully', data: { lead } });
   } catch (err) {
     next(err);
   }
@@ -101,9 +101,9 @@ exports.convertLead = async (req, res, next) => {
     const { customer, deal } = await leadService.convertLead(
       req.params.id,
       req.body,
-      req.user._id
+      req.user   // pass full user object for role check
     );
-    res.status(200).json({ success: true, data: { customer, deal } });
+    res.status(200).json({ success: true, message: 'Lead converted successfully', data: { customer, deal } });
   } catch (err) {
     next(err);
   }

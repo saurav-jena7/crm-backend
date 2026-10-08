@@ -78,11 +78,40 @@ exports.updateUser = async (id, data) => {
 };
 
 /**
+ * Toggles a user's active status (activate / deactivate).
+ * Prevents an admin from deactivating themselves.
+ *
+ * @param {string} targetId  - ID of the user to toggle
+ * @param {boolean} isActive - Desired active state
+ * @param {string} requesterId - ID of the admin making the request
+ * @returns {object} Sanitized updated user
+ */
+exports.toggleUserStatus = async (targetId, isActive, requesterId) => {
+  if (String(targetId) === String(requesterId)) {
+    throw new AppError('You cannot change your own active status', 403);
+  }
+
+  const user = await User.findByIdAndUpdate(
+    targetId,
+    { isActive },
+    { new: true, runValidators: true }
+  );
+  if (!user) throw new AppError('User not found', 404);
+  return sanitizeUser(user);
+};
+
+/**
  * Soft-deletes a user by setting isActive=false.
+ * Prevents an admin from deleting themselves.
+ *
  * @param {string} id
+ * @param {string} requesterId
  * @returns {object} Sanitized (deactivated) user
  */
-exports.deleteUser = async (id) => {
+exports.deleteUser = async (id, requesterId) => {
+  if (String(id) === String(requesterId)) {
+    throw new AppError('You cannot delete your own account', 403);
+  }
   const user = await User.findByIdAndUpdate(id, { isActive: false }, { new: true });
   if (!user) throw new AppError('User not found', 404);
   return sanitizeUser(user);
