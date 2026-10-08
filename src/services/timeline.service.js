@@ -43,29 +43,35 @@ exports.createTimelineEntry = async ({
 
 /**
  * Retrieves a paginated list of timeline entries for a specific entity.
+ * Results are sorted newest-first.
  *
- * @param {string} entityType - 'lead', 'customer', 'deal', or 'user'.
- * @param {ObjectId} entityId - ID of the related entity.
- * @param {number} [page=1] - Page number (1-indexed).
- * @param {number} [limit=20] - Number of entries per page.
- * @returns {Promise<Object>} { entries, total, page, totalPages }
+ * @param {string}   entityType - 'lead', 'customer', 'deal', or 'user'.
+ * @param {ObjectId} entityId   - ID of the related entity.
+ * @param {number}   [page=1]
+ * @param {number}   [limit=20]
+ * @returns {{ entries, pagination }}
  */
 exports.getTimeline = async (entityType, entityId, page = 1, limit = 20) => {
-  const skip = (page - 1) * limit;
+  const parsedPage  = Math.max(1, parseInt(page,  10) || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip        = (parsedPage - 1) * parsedLimit;
 
-  const [entries, total] = await Promise.all([
+  const [entries, totalRecords] = await Promise.all([
     Timeline.find({ entityType, entityId })
-      .populate('performedBy', 'name email')
+      .populate('performedBy', 'name email role')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limit),
+      .limit(parsedLimit),
     Timeline.countDocuments({ entityType, entityId }),
   ]);
 
   return {
     entries,
-    total,
-    page,
-    totalPages: Math.ceil(total / limit),
+    pagination: {
+      currentPage:  parsedPage,
+      pageSize:     parsedLimit,
+      totalRecords,
+      totalPages:   Math.ceil(totalRecords / parsedLimit),
+    },
   };
 };
