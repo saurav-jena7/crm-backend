@@ -12,6 +12,10 @@ const rateLimit = require('express-rate-limit');
 const errorHandler = require('./src/middleware/errorHandler');
 const AppError = require('./src/utils/AppError');
 
+// ── Swagger / OpenAPI docs ────────────────────────────────────────────────────
+const swaggerUi   = require('swagger-ui-express');
+const swaggerSpec = require('./src/config/swagger');
+
 // ── Routers ──────────────────────────────────────────────────────────────────
 const authRoutes = require('./src/routes/auth.routes');
 const userRoutes = require('./src/routes/user.routes');
@@ -80,6 +84,23 @@ app.use('/api/config', configRoutes);
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, message: 'CRM API is running' });
+});
+
+// ── API Documentation (Swagger UI) ────────────────────────────────────────────
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'CRM Sales API Docs',
+  swaggerOptions: {
+    persistAuthorization: true,   // keep Bearer token across page refreshes
+    displayRequestDuration: true,
+    filter: true,
+    docExpansion: 'none',         // collapse all tags by default
+  },
+}));
+
+// Serve raw OpenAPI JSON for external tools (Postman import, etc.)
+app.get('/api/docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
 });
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
