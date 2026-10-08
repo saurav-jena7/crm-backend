@@ -10,38 +10,72 @@ const TimelineService = require('./timeline.service');
 const { paginate, buildSortObject } = require('../utils/helpers');
 
 /**
- * Returns a paginated list of leads.
- * - Admin: all leads
- * - Sales Manager: leads assigned to their direct reports (sales_executives with manager=this user)
- *   plus unassigned leads
- * - Sales Executive: only leads assigned to them
+ * Returns a paginated, filtered, sorted list of leads.
+ *
+ * Filters supported:
+ *   status, source, priority, assignedTo — exact match
+ *   search   — keyword across name, email, company (case-insensitive)
+ *   dateFrom / dateTo — createdAt date range
+ *
+ * Role scoping:
+ *   Admin          → all leads
+ *   Sales Manager  → team leads (executives whose manager = this user) + unassigned
+ *   Sales Executive→ only leads assigned to them
  *
  * @param {object} filters
  * @param {object} user  - { _id, role }
  * @param {number} page
  * @param {number} limit
  * @param {string} sort
- * @returns {{ leads, total, page, totalPages }}
+ * @returns {{ leads, pagination }}
  */
 exports.getAllLeads = async (filters = {}, user, page = 1, limit = 10, sort = '-createdAt') => {
-  const query = { ...filters };
+  const query = {};
 
+  // ── Exact-match filters ────────────────────────────────────────────────────
+  if (filters.status)     query.status     = filters.status;
+  if (filters.source)     query.source     = filters.source;
+  if (filters.priority)   query.priority   = filters.priority;
+  if (filters.assignedTo) query.assignedTo = filters.assignedTo;
+
+  // ── Keyword search across name, email, company ─────────────────────────────
+  if (filters.search && filters.search.trim()) {
+    const regex = new RegExp(filters.search.trim(), 'i');
+    query.$or = [{ name: regex }, { email: regex }, { company: regex }];
+  }
+
+  // ── Date-range filter on createdAt ─────────────────────────────────────────
+  if (filters.dateFrom || filters.dateTo) {
+    query.createdAt = {};
+    if (filters.dateFrom) query.createdAt.$gte = new Date(filters.dateFrom);
+    if (filters.dateTo)   query.createdAt.$lte = new Date(filters.dateTo);
+  }
+
+  // ── Role-based scoping ────────────────────────────────────────────────────
   if (user.role === 'sales_executive') {
     query.assignedTo = user._id;
   } else if (user.role === 'sales_manager') {
-    // Find all executives reporting to this manager
     const teamMembers = await User.find({ manager: user._id, isActive: true }).select('_id');
     const teamIds = teamMembers.map((m) => m._id);
-    // See their own leads + team leads (assignedTo in team or unassigned)
-    query.$or = [{ assignedTo: { $in: [...teamIds, user._id] } }, { assignedTo: null }];
+    // Merge with any existing assignedTo filter
+    if (filters.assignedTo) {
+      // Manager drilling into a specific team member — honour it
+    } else {
+      query.$or = [
+        { assignedTo: { $in: [...teamIds, user._id] } },
+        { assignedTo: null },
+      ];
+    }
   }
 
-  const { skip, limit: parsedLimit } = paginate(null, page, limit);
-  const sortObj = buildSortObject(sort);
+  const parsedPage  = Math.max(1, parseInt(page, 10)  || 1);
+  const parsedLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+  const { skip }    = paginate(null, parsedPage, parsedLimit);
+  const sortObj     = buildSortObject(sort || '-createdAt');
 
-  const [leads, total] = await Promise.all([
+  const [leads, totalRecords] = await Promise.all([
     Lead.find(query)
-      .populate('assignedTo', 'name email')
+      .populate('assignedTo', 'name email role')
       .populate('createdBy', 'name')
       .sort(sortObj)
       .skip(skip)
@@ -51,24 +85,28 @@ exports.getAllLeads = async (filters = {}, user, page = 1, limit = 10, sort = '-
 
   return {
     leads,
-    total,
-    page: parseInt(page, 10),
-    totalPages: Math.ceil(total / parsedLimit),
+    pagination: {
+      currentPage:  parsedPage,
+      pageSize:     parsedLimit,
+      totalRecords,
+      totalPages:   Math.ceil(totalRecords / parsedLimit),
+    },
   };
 };
 
 /**
- * Returns a single lead by ID.
+ * Returns a single lead by ID with populated references.
  * Sales executives can only view leads assigned to them.
  *
  * @param {string} id
  * @param {object} user  - { _id, role }
- * @returns {object} Lead document
  */
 exports.getLead = async (id, user) => {
   const lead = await Lead.findById(id)
-    .populate('assignedTo', 'name email')
-    .populate('createdBy', 'name');
+    .populate('assignedTo', 'name email role')
+    .populate('createdBy', 'name')
+    .populate('convertedCustomer', 'name email')
+    .populate('convertedDeal', 'title stage value');
 
   if (!lead) throw new AppError('Lead not found', 404);
 
@@ -86,7 +124,6 @@ exports.getLead = async (id, user) => {
 /**
  * Creates a new lead and records a timeline entry.
  * @param {object} data
- * @returns {object} Lead document
  */
 exports.createLead = async (data) => {
   const lead = await Lead.create(data);
@@ -96,6 +133,7 @@ exports.createLead = async (data) => {
     entityType: 'lead',
     entityId: lead._id,
     performedBy: data.createdBy,
+    newValue: { status: lead.status, priority: lead.priority },
   });
 
   return lead;
@@ -103,29 +141,47 @@ exports.createLead = async (data) => {
 
 /**
  * Updates a lead and records a timeline entry.
+ * Sales executives can only update leads assigned to them.
+ *
  * @param {string} id
  * @param {object} data
- * @param {string} performedBy
- * @returns {object} Updated lead document
+ * @param {object} user - { _id, role }
  */
-exports.updateLead = async (id, data, performedBy) => {
+exports.updateLead = async (id, data, user) => {
   const existing = await Lead.findById(id);
   if (!existing) throw new AppError('Lead not found', 404);
 
+  // Ownership check for sales executives
+  if (
+    user.role === 'sales_executive' &&
+    String(existing.assignedTo) !== String(user._id)
+  ) {
+    throw new AppError('You can only update leads assigned to you', 403);
+  }
+
+  // Block direct status change to 'converted' via update
+  if (data.status === 'converted') {
+    throw new AppError('Use the convert endpoint to convert a lead', 400);
+  }
+
   const previousValue = {
-    name: existing.name,
-    email: existing.email,
-    status: existing.status,
+    name:       existing.name,
+    email:      existing.email,
+    status:     existing.status,
+    priority:   existing.priority,
     assignedTo: existing.assignedTo,
   };
 
-  const lead = await Lead.findByIdAndUpdate(id, data, { new: true, runValidators: true });
+  const lead = await Lead.findByIdAndUpdate(id, data, {
+    new: true,
+    runValidators: true,
+  }).populate('assignedTo', 'name email');
 
   await TimelineService.createTimelineEntry({
     action: 'Lead updated',
     entityType: 'lead',
     entityId: id,
-    performedBy,
+    performedBy: user._id,
     previousValue,
     newValue: data,
   });
@@ -134,7 +190,7 @@ exports.updateLead = async (id, data, performedBy) => {
 };
 
 /**
- * Deletes a lead by ID.
+ * Deletes a lead by ID (admin only — enforced at route level).
  * @param {string} id
  */
 exports.deleteLead = async (id) => {
@@ -145,19 +201,17 @@ exports.deleteLead = async (id) => {
 
 /**
  * Changes the status of a lead and records a timeline entry.
- * Sales executives can only update status on leads assigned to them.
- * Converting a lead to 'converted' via this endpoint is blocked — use convertLead instead.
+ * - Sales executives can only update status on leads assigned to them.
+ * - 'converted' status is blocked — use the convertLead endpoint.
  *
  * @param {string} id
  * @param {string} status
  * @param {object} user - { _id, role }
- * @returns {object} Updated lead document
  */
 exports.updateLeadStatus = async (id, status, user) => {
   const lead = await Lead.findById(id);
   if (!lead) throw new AppError('Lead not found', 404);
 
-  // Sales executives can only update leads assigned to them
   if (
     user.role === 'sales_executive' &&
     String(lead.assignedTo) !== String(user._id)
@@ -165,18 +219,16 @@ exports.updateLeadStatus = async (id, status, user) => {
     throw new AppError('You can only update status of leads assigned to you', 403);
   }
 
-  // 'converted' status is only set by the convertLead flow
   if (status === 'converted') {
     throw new AppError('Use the convert endpoint to convert a lead', 400);
   }
 
   const previousValue = { status: lead.status };
-
   lead.status = status;
   await lead.save();
 
   await TimelineService.createTimelineEntry({
-    action: 'Status changed',
+    action: 'Lead status changed',
     entityType: 'lead',
     entityId: id,
     performedBy: user._id,
@@ -188,30 +240,36 @@ exports.updateLeadStatus = async (id, status, user) => {
 };
 
 /**
- * Assigns a lead to a user and records a timeline entry.
+ * Assigns/reassigns a lead to a user.
+ * Validates: assignee must exist, be active, and have an executive/manager role.
+ *
  * @param {string} id
  * @param {string} assigneeId
  * @param {string} performedBy
- * @returns {object} Updated lead document
  */
 exports.assignLead = async (id, assigneeId, performedBy) => {
   const assignee = await User.findById(assigneeId);
-  if (!assignee) throw new AppError('Assignee user not found', 404);
+  if (!assignee)        throw new AppError('Assignee not found', 404);
+  if (!assignee.isActive) throw new AppError('Cannot assign lead to an inactive user', 400);
+  if (assignee.role === 'admin') {
+    throw new AppError('Leads can only be assigned to sales managers or executives', 400);
+  }
 
   const lead = await Lead.findById(id);
   if (!lead) throw new AppError('Lead not found', 404);
 
-  const previousValue = { assignedTo: lead.assignedTo };
+  const previousAssignee = lead.assignedTo;
+  const action = previousAssignee ? 'Lead reassigned' : 'Lead assigned';
 
   lead.assignedTo = assigneeId;
   await lead.save();
 
   await TimelineService.createTimelineEntry({
-    action: 'Lead assigned',
+    action,
     entityType: 'lead',
     entityId: id,
     performedBy,
-    previousValue,
+    previousValue: { assignedTo: previousAssignee },
     newValue: { assignedTo: assigneeId },
   });
 
@@ -219,14 +277,13 @@ exports.assignLead = async (id, assigneeId, performedBy) => {
 };
 
 /**
- * Converts a lead into a Customer + Deal using a MongoDB transaction.
+ * Converts a qualified lead into a Customer + Deal atomically (MongoDB transaction).
  * - Admins/Managers can convert any qualified lead.
  * - Sales Executives can only convert leads assigned to them.
  *
- * @param {string} id - Lead ID to convert
- * @param {object} conversionData - { dealTitle, dealValue, dealStage, expectedCloseDate, customerData }
- * @param {object} performer - { _id, role } of the user performing the conversion
- * @returns {{ customer, deal }}
+ * @param {string} id
+ * @param {object} conversionData
+ * @param {object} performer - { _id, role }
  */
 exports.convertLead = async (
   id,
@@ -242,7 +299,6 @@ exports.convertLead = async (
     if (lead.status === 'converted') throw new AppError('Lead is already converted', 400);
     if (lead.status !== 'qualified') throw new AppError('Only qualified leads can be converted', 400);
 
-    // Sales executives can only convert their own assigned leads
     if (
       performer.role === 'sales_executive' &&
       String(lead.assignedTo) !== String(performer._id)
@@ -250,65 +306,58 @@ exports.convertLead = async (
       throw new AppError('You can only convert leads assigned to you', 403);
     }
 
-    // Create Customer — array form required when passing a session
-    const customer = await Customer.create(
-      [
-        {
-          name: customerData.name || lead.name,
-          email: customerData.email || lead.email,
-          phone: customerData.phone || lead.phone,
-          company: customerData.company || lead.company,
-          ...customerData,
-          originalLead: lead._id,
-          assignedTo: lead.assignedTo,
-          createdBy: performer._id,
-        },
-      ],
+    const [customer] = await Customer.create(
+      [{
+        name:    customerData.name    || lead.name,
+        email:   customerData.email   || lead.email,
+        phone:   customerData.phone   || lead.phone,
+        company: customerData.company || lead.company,
+        ...customerData,
+        originalLead: lead._id,
+        assignedTo:   lead.assignedTo,
+        createdBy:    performer._id,
+      }],
       { session }
     );
 
-    // Create Deal linked to the new customer
-    const deal = await Deal.create(
-      [
-        {
-          title: dealTitle,
-          lead: lead._id,
-          customer: customer[0]._id,
-          assignedTo: lead.assignedTo,
-          value: dealValue,
-          stage: dealStage || 'qualification',
-          expectedCloseDate,
-          createdBy: performer._id,
-        },
-      ],
+    const [deal] = await Deal.create(
+      [{
+        title:             dealTitle,
+        lead:              lead._id,
+        customer:          customer._id,
+        assignedTo:        lead.assignedTo,
+        value:             dealValue,
+        stage:             dealStage || 'qualification',
+        expectedCloseDate,
+        createdBy:         performer._id,
+      }],
       { session }
     );
 
-    // Mark lead as converted
     await Lead.findByIdAndUpdate(
       id,
       {
-        status: 'converted',
-        convertedAt: new Date(),
-        convertedCustomer: customer[0]._id,
-        convertedDeal: deal[0]._id,
+        status:            'converted',
+        convertedAt:       new Date(),
+        convertedCustomer: customer._id,
+        convertedDeal:     deal._id,
       },
-      { session, new: true }
+      { session }
     );
 
-    // Timeline entries — all inside the same session
     await TimelineService.createTimelineEntry({
-      action: 'Lead converted to customer',
+      action: 'Lead converted',
       entityType: 'lead',
       entityId: id,
       performedBy: performer._id,
+      newValue: { convertedCustomer: customer._id, convertedDeal: deal._id },
       session,
     });
 
     await TimelineService.createTimelineEntry({
       action: 'Customer created from lead',
       entityType: 'customer',
-      entityId: customer[0]._id,
+      entityId: customer._id,
       performedBy: performer._id,
       session,
     });
@@ -316,14 +365,13 @@ exports.convertLead = async (
     await TimelineService.createTimelineEntry({
       action: 'Deal created from lead',
       entityType: 'deal',
-      entityId: deal[0]._id,
+      entityId: deal._id,
       performedBy: performer._id,
       session,
     });
 
     await session.commitTransaction();
-
-    return { customer: customer[0], deal: deal[0] };
+    return { customer, deal };
   } catch (err) {
     await session.abortTransaction();
     throw err;

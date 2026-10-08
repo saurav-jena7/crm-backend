@@ -4,18 +4,35 @@ const leadService = require('../services/lead.service');
 
 /**
  * GET /api/leads
+ * Query params: page, limit, sort, status, source, priority, assignedTo,
+ *               search (keyword), dateFrom, dateTo
+ * Multiple filters are supported in a single request.
  */
 exports.getAllLeads = async (req, res, next) => {
   try {
-    const { page, limit, sort, status, source, priority, assignedTo } = req.query;
+    const {
+      page, limit, sort,
+      status, source, priority, assignedTo,
+      search, dateFrom, dateTo,
+    } = req.query;
+
     const filters = {};
-    if (status) filters.status = status;
-    if (source) filters.source = source;
-    if (priority) filters.priority = priority;
+    if (status)     filters.status     = status;
+    if (source)     filters.source     = source;
+    if (priority)   filters.priority   = priority;
     if (assignedTo) filters.assignedTo = assignedTo;
+    if (search)     filters.search     = search;
+    if (dateFrom)   filters.dateFrom   = dateFrom;
+    if (dateTo)     filters.dateTo     = dateTo;
 
     const result = await leadService.getAllLeads(filters, req.user, page, limit, sort);
-    res.status(200).json({ success: true, data: result });
+
+    res.status(200).json({
+      success: true,
+      message: 'Leads fetched successfully',
+      data: result.leads,
+      pagination: result.pagination,
+    });
   } catch (err) {
     next(err);
   }
@@ -27,7 +44,11 @@ exports.getAllLeads = async (req, res, next) => {
 exports.getLead = async (req, res, next) => {
   try {
     const lead = await leadService.getLead(req.params.id, req.user);
-    res.status(200).json({ success: true, data: { lead } });
+    res.status(200).json({
+      success: true,
+      message: 'Lead fetched successfully',
+      data: { lead },
+    });
   } catch (err) {
     next(err);
   }
@@ -39,7 +60,11 @@ exports.getLead = async (req, res, next) => {
 exports.createLead = async (req, res, next) => {
   try {
     const lead = await leadService.createLead({ ...req.body, createdBy: req.user._id });
-    res.status(201).json({ success: true, data: { lead } });
+    res.status(201).json({
+      success: true,
+      message: 'Lead created successfully',
+      data: { lead },
+    });
   } catch (err) {
     next(err);
   }
@@ -50,8 +75,12 @@ exports.createLead = async (req, res, next) => {
  */
 exports.updateLead = async (req, res, next) => {
   try {
-    const lead = await leadService.updateLead(req.params.id, req.body, req.user._id);
-    res.status(200).json({ success: true, data: { lead } });
+    const lead = await leadService.updateLead(req.params.id, req.body, req.user);
+    res.status(200).json({
+      success: true,
+      message: 'Lead updated successfully',
+      data: { lead },
+    });
   } catch (err) {
     next(err);
   }
@@ -63,7 +92,10 @@ exports.updateLead = async (req, res, next) => {
 exports.deleteLead = async (req, res, next) => {
   try {
     await leadService.deleteLead(req.params.id);
-    res.status(204).send();
+    res.status(200).json({
+      success: true,
+      message: 'Lead deleted successfully',
+    });
   } catch (err) {
     next(err);
   }
@@ -75,7 +107,11 @@ exports.deleteLead = async (req, res, next) => {
 exports.updateLeadStatus = async (req, res, next) => {
   try {
     const lead = await leadService.updateLeadStatus(req.params.id, req.body.status, req.user);
-    res.status(200).json({ success: true, message: 'Lead status updated', data: { lead } });
+    res.status(200).json({
+      success: true,
+      message: 'Lead status updated successfully',
+      data: { lead },
+    });
   } catch (err) {
     next(err);
   }
@@ -87,7 +123,11 @@ exports.updateLeadStatus = async (req, res, next) => {
 exports.assignLead = async (req, res, next) => {
   try {
     const lead = await leadService.assignLead(req.params.id, req.body.assignedTo, req.user._id);
-    res.status(200).json({ success: true, message: 'Lead assigned successfully', data: { lead } });
+    res.status(200).json({
+      success: true,
+      message: 'Lead assigned successfully',
+      data: { lead },
+    });
   } catch (err) {
     next(err);
   }
@@ -101,9 +141,13 @@ exports.convertLead = async (req, res, next) => {
     const { customer, deal } = await leadService.convertLead(
       req.params.id,
       req.body,
-      req.user   // pass full user object for role check
+      req.user
     );
-    res.status(200).json({ success: true, message: 'Lead converted successfully', data: { customer, deal } });
+    res.status(200).json({
+      success: true,
+      message: 'Lead converted successfully',
+      data: { customer, deal },
+    });
   } catch (err) {
     next(err);
   }

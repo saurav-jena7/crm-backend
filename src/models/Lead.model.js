@@ -13,6 +13,7 @@ const leadSchema = new mongoose.Schema(
       type: String,
       lowercase: true,
       trim: true,
+      index: true,
     },
     phone: {
       type: String,
@@ -26,20 +27,24 @@ const leadSchema = new mongoose.Schema(
       type: String,
       enum: ['website', 'referral', 'social_media', 'email', 'phone', 'other'],
       default: 'other',
+      index: true,
     },
     status: {
       type: String,
       enum: ['new', 'contacted', 'qualified', 'unqualified', 'converted', 'lost'],
       default: 'new',
+      index: true,
     },
     priority: {
       type: String,
       enum: ['low', 'medium', 'high'],
       default: 'medium',
+      index: true,
     },
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+      index: true,
     },
     description: {
       type: String,
@@ -48,6 +53,7 @@ const leadSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'createdBy is required'],
+      index: true,
     },
     convertedAt: {
       type: Date,
@@ -64,8 +70,12 @@ const leadSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound index to speed up status + assignee queries
+// Compound indexes for most common query patterns
 leadSchema.index({ status: 1, assignedTo: 1 });
+leadSchema.index({ priority: 1, status: 1 });
+leadSchema.index({ createdAt: -1 });
+// Text index for keyword search across name, email, company
+leadSchema.index({ name: 'text', email: 'text', company: 'text' });
 
 const Lead = mongoose.model('Lead', leadSchema);
 
