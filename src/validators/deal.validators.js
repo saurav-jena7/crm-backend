@@ -15,14 +15,16 @@ const dealStageEnum = z.enum([
 
 /** Schema for POST /api/deals */
 const createDealSchema = z.object({
-  title: z.string().min(1, 'Deal title is required'),
-  lead: z.string().regex(objectIdRegex, 'Invalid lead ID').optional(),
-  customer: z.string().regex(objectIdRegex, 'Invalid customer ID').optional(),
+  title:      z.string().min(1, 'Deal title is required'),
+  lead:       z.string().regex(objectIdRegex, 'Invalid lead ID').optional(),
+  customer:   z.string().regex(objectIdRegex, 'Invalid customer ID').optional(),
   assignedTo: z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
-  value: z.number({ required_error: 'Value is required' }).min(0, 'Value cannot be negative'),
+  value: z
+    .number({ required_error: 'Value is required' })
+    .positive('Deal value must be greater than 0'),
   probability: z
     .number()
-    .min(0, 'Probability cannot be negative')
+    .min(0,   'Probability cannot be negative')
     .max(100, 'Probability cannot exceed 100')
     .optional(),
   expectedCloseDate: z.string().optional(),
