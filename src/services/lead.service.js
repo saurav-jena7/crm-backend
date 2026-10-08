@@ -241,18 +241,43 @@ exports.updateLeadStatus = async (id, status, user) => {
 
 /**
  * Assigns/reassigns a lead to a user.
- * Validates: assignee must exist, be active, and have an executive/manager role.
  *
- * @param {string} id
- * @param {string} assigneeId
- * @param {string} performedBy
+ * Rules (per spec section 6):
+ *  - Admin can assign to any active sales_executive or sales_manager.
+ *  - Sales Manager can only assign to executives on their own team
+ *    (i.e. executives whose manager field === this manager's _id).
+ *  - Sales Executive cannot call this endpoint (blocked at route level).
+ *  - Assignee must exist, be active, and not be an admin.
+ *  - Assignment change is recorded in the timeline.
+ *  - Unauthorized assignment attempts are rejected with 403.
+ *
+ * @param {string} id          - Lead ID
+ * @param {string} assigneeId  - User ID to assign the lead to
+ * @param {object} performer   - Full user object { _id, role } of the requester
  */
-exports.assignLead = async (id, assigneeId, performedBy) => {
+exports.assignLead = async (id, assigneeId, performer) => {
+  // Validate the assignee exists and is eligible
   const assignee = await User.findById(assigneeId);
-  if (!assignee)        throw new AppError('Assignee not found', 404);
+  if (!assignee)          throw new AppError('Assignee not found', 404);
   if (!assignee.isActive) throw new AppError('Cannot assign lead to an inactive user', 400);
   if (assignee.role === 'admin') {
-    throw new AppError('Leads can only be assigned to sales managers or executives', 400);
+    throw new AppError('Leads can only be assigned to sales managers or sales executives', 400);
+  }
+
+  // Manager can only assign to executives on their own team
+  if (performer.role === 'sales_manager') {
+    if (assignee.role !== 'sales_executive') {
+      throw new AppError('Sales managers can only assign leads to sales executives', 400);
+    }
+    // Check the executive belongs to this manager's team
+    const isTeamMember =
+      assignee.manager && String(assignee.manager) === String(performer._id);
+    if (!isTeamMember) {
+      throw new AppError(
+        'You can only assign leads to sales executives on your team',
+        403
+      );
+    }
   }
 
   const lead = await Lead.findById(id);
@@ -268,12 +293,13 @@ exports.assignLead = async (id, assigneeId, performedBy) => {
     action,
     entityType: 'lead',
     entityId: id,
-    performedBy,
+    performedBy: performer._id,
     previousValue: { assignedTo: previousAssignee },
     newValue: { assignedTo: assigneeId },
+    description: `Assigned to ${assignee.name} (${assignee.role})`,
   });
 
-  return lead;
+  return lead.populate('assignedTo', 'name email role');
 };
 
 /**

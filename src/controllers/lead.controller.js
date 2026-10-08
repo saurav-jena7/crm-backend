@@ -122,7 +122,7 @@ exports.updateLeadStatus = async (req, res, next) => {
  */
 exports.assignLead = async (req, res, next) => {
   try {
-    const lead = await leadService.assignLead(req.params.id, req.body.assignedTo, req.user._id);
+    const lead = await leadService.assignLead(req.params.id, req.body.assignedTo, req.user);
     res.status(200).json({
       success: true,
       message: 'Lead assigned successfully',
