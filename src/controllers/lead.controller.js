@@ -135,10 +135,12 @@ exports.assignLead = async (req, res, next) => {
 
 /**
  * POST /api/leads/:id/convert
+ * Returns the updated lead (with convertedCustomer + convertedDeal refs),
+ * the new customer, and the new deal — showing the full Lead→Customer→Deal chain.
  */
 exports.convertLead = async (req, res, next) => {
   try {
-    const { customer, deal } = await leadService.convertLead(
+    const { lead, customer, deal } = await leadService.convertLead(
       req.params.id,
       req.body,
       req.user
@@ -146,7 +148,18 @@ exports.convertLead = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Lead converted successfully',
-      data: { customer, deal },
+      data: {
+        lead: {
+          _id:               lead._id,
+          name:              lead.name,
+          status:            lead.status,
+          convertedAt:       lead.convertedAt,
+          convertedCustomer: lead.convertedCustomer,
+          convertedDeal:     lead.convertedDeal,
+        },
+        customer,
+        deal,
+      },
     });
   } catch (err) {
     next(err);

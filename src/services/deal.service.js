@@ -62,10 +62,17 @@ exports.getDeal = async (id) => {
 
 /**
  * Creates a new deal and records a timeline entry.
+ * expectedRevenue is calculated by the pre-save hook (value * probability/100).
+ *
  * @param {object} data
  * @returns {object} Deal document
  */
 exports.createDeal = async (data) => {
+  // Calculate expectedRevenue explicitly on create so it's stored immediately
+  if (data.value !== undefined && data.probability !== undefined) {
+    data.expectedRevenue = Math.round(data.value * (data.probability / 100) * 100) / 100;
+  }
+
   const deal = await Deal.create(data);
 
   await TimelineService.createTimelineEntry({
@@ -73,29 +80,40 @@ exports.createDeal = async (data) => {
     entityType: 'deal',
     entityId: deal._id,
     performedBy: data.createdBy,
+    newValue: { stage: deal.stage, value: deal.value },
   });
 
   return deal;
 };
 
 /**
- * Updates a deal and records a timeline entry.
+ * Updates a deal's non-stage fields and records a timeline entry.
+ * Uses save() so the pre-save hook recalculates expectedRevenue.
+ *
  * @param {string} id
  * @param {object} data
  * @param {string} performedBy
  * @returns {object} Updated deal document
  */
 exports.updateDeal = async (id, data, performedBy) => {
-  const existing = await Deal.findById(id);
-  if (!existing) throw new AppError('Deal not found', 404);
+  const deal = await Deal.findById(id);
+  if (!deal) throw new AppError('Deal not found', 404);
+
+  // Block stage changes through update — must use the dedicated stage endpoint
+  if (data.stage) {
+    throw new AppError('Use PATCH /deals/:id/stage to change deal stage', 400);
+  }
 
   const previousValue = {
-    title: existing.title,
-    stage: existing.stage,
-    value: existing.value,
+    title:           deal.title,
+    value:           deal.value,
+    probability:     deal.probability,
+    expectedRevenue: deal.expectedRevenue,
   };
 
-  const deal = await Deal.findByIdAndUpdate(id, data, { new: true, runValidators: true });
+  // Apply updates to the document so pre-save hook recalculates expectedRevenue
+  Object.assign(deal, data);
+  await deal.save();
 
   await TimelineService.createTimelineEntry({
     action: 'Deal updated',
@@ -103,7 +121,12 @@ exports.updateDeal = async (id, data, performedBy) => {
     entityId: id,
     performedBy,
     previousValue,
-    newValue: data,
+    newValue: {
+      title:           deal.title,
+      value:           deal.value,
+      probability:     deal.probability,
+      expectedRevenue: deal.expectedRevenue,
+    },
   });
 
   return deal;
@@ -174,29 +197,23 @@ exports.updateDealStage = async (
     throw new AppError('Lost reason is required when marking a deal as lost', 400);
   }
 
-  const updateData = {
-    stage,
-    ...(lostReason && { lostReason }),
-    ...(value !== undefined && { value }),
-    ...(probability !== undefined && { probability }),
-    ...(expectedCloseDate && { expectedCloseDate }),
-    // Stamp terminal timestamps
-    ...(stage === 'won' && { wonAt: new Date() }),
-    ...(stage === 'lost' && { lostAt: new Date() }),
-  };
+  // Apply stage transition updates via save() so the pre-save hook fires
+  if (lostReason)         deal.lostReason         = lostReason;
+  if (value !== undefined)     deal.value          = value;
+  if (probability !== undefined) deal.probability  = probability;
+  if (expectedCloseDate)  deal.expectedCloseDate   = expectedCloseDate;
+  deal.stage = stage;
+  // expectedRevenue is recalculated automatically by the pre-save hook
 
-  const updated = await Deal.findByIdAndUpdate(id, updateData, {
-    new: true,
-    runValidators: true,
-  });
+  const updated = await deal.save();
 
   await TimelineService.createTimelineEntry({
-    action: `Stage changed: ${currentStage} → ${stage}`,
+    action: `Deal stage changed: ${currentStage} → ${stage}`,
     entityType: 'deal',
     entityId: id,
     performedBy,
     previousValue: { stage: currentStage },
-    newValue: { stage },
+    newValue: { stage, value: updated.value, probability: updated.probability, expectedRevenue: updated.expectedRevenue },
   });
 
   return updated;

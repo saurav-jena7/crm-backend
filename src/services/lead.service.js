@@ -304,12 +304,21 @@ exports.assignLead = async (id, assigneeId, performer) => {
 
 /**
  * Converts a qualified lead into a Customer + Deal atomically (MongoDB transaction).
- * - Admins/Managers can convert any qualified lead.
- * - Sales Executives can only convert leads assigned to them.
+ *
+ * Requirements (spec section 7):
+ *  - Only qualified leads can be converted.
+ *  - Already-converted leads are rejected.
+ *  - Customer references the original lead (originalLead field).
+ *  - Deal references both customer and lead.
+ *  - MongoDB transaction ensures no partial conversion leaves inconsistent data.
+ *  - Three timeline entries are created inside the transaction.
+ *  - Sales Executives can only convert leads assigned to them.
+ *  - Admins/Managers can convert any qualified lead.
  *
  * @param {string} id
- * @param {object} conversionData
- * @param {object} performer - { _id, role }
+ * @param {object} conversionData - { dealTitle, dealValue, dealStage, expectedCloseDate, customerData? }
+ * @param {object} performer      - Full user object { _id, role }
+ * @returns {{ lead, customer, deal }}
  */
 exports.convertLead = async (
   id,
@@ -320,11 +329,21 @@ exports.convertLead = async (
   session.startTransaction();
 
   try {
+    // ── 1. Validate lead eligibility ───────────────────────────────────────────
     const lead = await Lead.findById(id).session(session);
     if (!lead) throw new AppError('Lead not found', 404);
-    if (lead.status === 'converted') throw new AppError('Lead is already converted', 400);
-    if (lead.status !== 'qualified') throw new AppError('Only qualified leads can be converted', 400);
 
+    if (lead.status === 'converted') {
+      throw new AppError('This lead has already been converted', 400);
+    }
+    if (lead.status !== 'qualified') {
+      throw new AppError(
+        `Only qualified leads can be converted. Current status: "${lead.status}"`,
+        400
+      );
+    }
+
+    // ── 2. Role-based access check ────────────────────────────────────────────
     if (
       performer.role === 'sales_executive' &&
       String(lead.assignedTo) !== String(performer._id)
@@ -332,35 +351,46 @@ exports.convertLead = async (
       throw new AppError('You can only convert leads assigned to you', 403);
     }
 
+    // ── 3. Create Customer — originalLead is always set from the lead, never from customerData ──
+    // customerData can only override name/email/phone/company/address for the customer record.
+    const safeCustomerData = {
+      name:    customerData.name    || lead.name,
+      email:   customerData.email   || lead.email,
+      phone:   customerData.phone   || lead.phone,
+      company: customerData.company || lead.company,
+    };
+    if (customerData.address) safeCustomerData.address = customerData.address;
+
     const [customer] = await Customer.create(
       [{
-        name:    customerData.name    || lead.name,
-        email:   customerData.email   || lead.email,
-        phone:   customerData.phone   || lead.phone,
-        company: customerData.company || lead.company,
-        ...customerData,
-        originalLead: lead._id,
+        ...safeCustomerData,
+        originalLead: lead._id,      // always set — required for Lead→Customer relationship
         assignedTo:   lead.assignedTo,
-        createdBy:    performer._id,
+        createdBy:    performer._id, // always set — cannot be overridden by client
+        status:       'active',
       }],
       { session }
     );
 
+    // ── 4. Create Deal — references both lead AND customer ────────────────────
     const [deal] = await Deal.create(
       [{
         title:             dealTitle,
-        lead:              lead._id,
-        customer:          customer._id,
+        lead:              lead._id,       // Lead reference
+        customer:          customer._id,   // Customer reference
         assignedTo:        lead.assignedTo,
         value:             dealValue,
+        probability:       dealStage === 'won' ? 100 : 0,
+        expectedRevenue:   dealStage === 'won' ? dealValue : 0,
         stage:             dealStage || 'qualification',
-        expectedCloseDate,
+        expectedCloseDate: expectedCloseDate || undefined,
         createdBy:         performer._id,
       }],
       { session }
     );
 
-    await Lead.findByIdAndUpdate(
+    // ── 5. Mark lead as converted — atomic with Customer+Deal creation ────────
+    const updatedLead = await Lead.findByIdAndUpdate(
       id,
       {
         status:            'converted',
@@ -368,37 +398,65 @@ exports.convertLead = async (
         convertedCustomer: customer._id,
         convertedDeal:     deal._id,
       },
-      { session }
+      { session, new: true }
     );
 
+    // ── 6. Timeline entries — all inside the transaction ──────────────────────
     await TimelineService.createTimelineEntry({
-      action: 'Lead converted',
-      entityType: 'lead',
-      entityId: id,
+      action:      'Lead converted',
+      entityType:  'lead',
+      entityId:    id,
       performedBy: performer._id,
-      newValue: { convertedCustomer: customer._id, convertedDeal: deal._id },
+      previousValue: { status: 'qualified' },
+      newValue:    {
+        status:            'converted',
+        convertedCustomer: customer._id,
+        convertedDeal:     deal._id,
+      },
+      description: `Converted to customer "${customer.name}" and deal "${deal.title}"`,
       session,
     });
 
     await TimelineService.createTimelineEntry({
-      action: 'Customer created from lead',
-      entityType: 'customer',
-      entityId: customer._id,
+      action:      'Customer created from lead conversion',
+      entityType:  'customer',
+      entityId:    customer._id,
       performedBy: performer._id,
+      newValue:    { originalLead: lead._id },
+      description: `Customer created from lead "${lead.name}"`,
       session,
     });
 
     await TimelineService.createTimelineEntry({
-      action: 'Deal created from lead',
-      entityType: 'deal',
-      entityId: deal._id,
+      action:      'Deal created from lead conversion',
+      entityType:  'deal',
+      entityId:    deal._id,
       performedBy: performer._id,
+      newValue:    { lead: lead._id, customer: customer._id, stage: deal.stage },
+      description: `Deal "${deal.title}" created, value: ${deal.value}`,
       session,
     });
 
+    // ── 7. Commit — all three documents are persisted atomically ──────────────
     await session.commitTransaction();
-    return { customer, deal };
+
+    // Populate cross-references to show full Lead→Customer→Deal chain in response
+    const populatedCustomer = await Customer.findById(customer._id)
+      .populate('originalLead', 'name email status')
+      .populate('assignedTo', 'name email role');
+
+    const populatedDeal = await Deal.findById(deal._id)
+      .populate('lead', 'name email status')
+      .populate('customer', 'name email company')
+      .populate('assignedTo', 'name email role');
+
+    return {
+      lead:     updatedLead,
+      customer: populatedCustomer,
+      deal:     populatedDeal,
+    };
   } catch (err) {
+    // Abort rolls back Customer + Deal creation if anything above failed
     await session.abortTransaction();
     throw err;
   } finally {
