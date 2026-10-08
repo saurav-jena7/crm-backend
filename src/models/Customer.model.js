@@ -4,11 +4,11 @@ const mongoose = require('mongoose');
 
 const addressSchema = new mongoose.Schema(
   {
-    street: { type: String },
-    city: { type: String },
-    state: { type: String },
-    country: { type: String },
-    zip: { type: String },
+    street:  { type: String, trim: true },
+    city:    { type: String, trim: true },
+    state:   { type: String, trim: true },
+    country: { type: String, trim: true },
+    zip:     { type: String, trim: true },
   },
   { _id: false }
 );
@@ -24,6 +24,7 @@ const customerSchema = new mongoose.Schema(
       type: String,
       lowercase: true,
       trim: true,
+      index: true,
     },
     phone: {
       type: String,
@@ -34,18 +35,22 @@ const customerSchema = new mongoose.Schema(
       trim: true,
     },
     address: addressSchema,
+    // Relationship: the lead this customer was converted from
     originalLead: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Lead',
+      index: true,
     },
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+      index: true,
     },
     status: {
       type: String,
       enum: ['active', 'inactive'],
       default: 'active',
+      index: true,
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -55,6 +60,12 @@ const customerSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Compound indexes for common query patterns
+customerSchema.index({ status: 1, assignedTo: 1 });
+customerSchema.index({ createdAt: -1 });
+// Text index for keyword search
+customerSchema.index({ name: 'text', email: 'text', company: 'text' });
 
 const Customer = mongoose.model('Customer', customerSchema);
 
