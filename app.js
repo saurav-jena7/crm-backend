@@ -21,6 +21,7 @@ const dealRoutes = require('./src/routes/deal.routes');
 const activityRoutes = require('./src/routes/activity.routes');
 const timelineRoutes = require('./src/routes/timeline.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
+const configRoutes = require('./src/routes/config.routes');
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use('/api/deals', dealRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/timeline', timelineRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/config', configRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
