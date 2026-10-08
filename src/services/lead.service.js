@@ -79,7 +79,8 @@ exports.getAllLeads = async (filters = {}, user, page = 1, limit = 10, sort = '-
       .populate('createdBy', 'name')
       .sort(sortObj)
       .skip(skip)
-      .limit(parsedLimit),
+      .limit(parsedLimit)
+      .lean(),           // avoid Mongoose hydration overhead on list queries
     Lead.countDocuments(query),
   ]);
 

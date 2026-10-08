@@ -82,7 +82,8 @@ exports.getAllDeals = async (filters = {}, user, page = 1, limit = 10, sort = '-
       .populate('createdBy',  'name')
       .sort(sortObj)
       .skip(skip)
-      .limit(parsedLimit),
+      .limit(parsedLimit)
+      .lean(),
     Deal.countDocuments(query),
   ]);
 

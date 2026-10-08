@@ -39,11 +39,13 @@ function buildSortObject(sortStr) {
 /**
  * Returns a plain object representation of a Mongoose user document
  * with sensitive fields removed.
- * @param {object} userDoc - A Mongoose User document.
+ * Works with both Mongoose documents (.toObject()) and lean plain objects.
+ * @param {object} userDoc - A Mongoose User document or plain object.
  * @returns {object} Plain user object without password or refreshToken.
  */
 function sanitizeUser(userDoc) {
-  const obj = userDoc.toObject();
+  // .toObject() exists on Mongoose docs; lean() results are already plain objects
+  const obj = typeof userDoc.toObject === 'function' ? userDoc.toObject() : { ...userDoc };
   delete obj.password;
   delete obj.refreshToken;
   return obj;

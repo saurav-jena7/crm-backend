@@ -75,7 +75,8 @@ exports.getAllCustomers = async (
       .populate('createdBy',    'name')
       .sort(sortObj)
       .skip(skip)
-      .limit(parsedLimit),
+      .limit(parsedLimit)
+      .lean(),
     Customer.countDocuments(query),
   ]);
 

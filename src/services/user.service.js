@@ -43,7 +43,8 @@ exports.getAllUsers = async (filters = {}, page = 1, limit = 10, sort = '-create
       .populate('manager', 'name email')
       .sort(sortObj)
       .skip(skip)
-      .limit(parsedLimit),
+      .limit(parsedLimit)
+      .lean(),
     User.countDocuments(query),
   ]);
 
