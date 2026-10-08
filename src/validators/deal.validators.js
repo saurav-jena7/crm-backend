@@ -1,29 +1,7 @@
 'use strict';
 
 const { z } = require('zod');
-
-const objectIdRegex   = /^[0-9a-fA-F]{24}$/;
-
-/**
- * Validates that an expectedCloseDate string is not in the past.
- * Allows today's date (compares date only, not time).
- */
-const futureDateCheck = (val, ctx) => {
-  if (!val) return; // optional field — absence is fine
-  const inputDate = new Date(val);
-  if (isNaN(inputDate.getTime())) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date format' });
-    return;
-  }
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (inputDate < today) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Expected close date cannot be in the past',
-    });
-  }
-};
+const { objectIdRegex, futureDateCheck } = require('./common.validators');
 
 const dealStageEnum = z.enum([
   'qualification',
@@ -40,33 +18,46 @@ const createDealSchema = z.object({
   lead:       z.string().regex(objectIdRegex, 'Invalid lead ID').optional(),
   customer:   z.string().regex(objectIdRegex, 'Invalid customer ID').optional(),
   assignedTo: z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
+  // Deal value must be > 0
   value: z
-    .number({ required_error: 'Value is required' })
+    .number({ required_error: 'Deal value is required' })
     .positive('Deal value must be greater than 0'),
+  // Probability 0–100
   probability: z
     .number()
     .min(0,   'Probability cannot be negative')
     .max(100, 'Probability cannot exceed 100')
     .optional(),
+  // Date cannot be in the past
   expectedCloseDate: z.string().optional().superRefine(futureDateCheck),
-  // stage intentionally omitted — use PATCH /api/deals/:id/stage to transition stages
+  // stage intentionally omitted — use PATCH /deals/:id/stage
   description: z.string().optional(),
 });
 
-/** Schema for PATCH /api/deals/:id — stage is excluded; use the dedicated stage endpoint */
-const updateDealSchema = createDealSchema.partial();
+/** Schema for PUT /api/deals/:id — stage excluded, use dedicated endpoint */
+const updateDealSchema = z.object({
+  title:       z.string().min(1).optional(),
+  lead:        z.string().regex(objectIdRegex, 'Invalid lead ID').optional(),
+  customer:    z.string().regex(objectIdRegex, 'Invalid customer ID').optional(),
+  assignedTo:  z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
+  value:       z.number().positive('Deal value must be greater than 0').optional(),
+  probability: z.number().min(0).max(100).optional(),
+  expectedCloseDate: z.string().optional().superRefine(futureDateCheck),
+  description: z.string().optional(),
+  // stage intentionally excluded
+});
 
 /**
  * Schema for PATCH /api/deals/:id/stage
- * Uses superRefine to enforce stage-specific requirements:
- *  - 'lost' requires lostReason
- *  - 'won'  requires expectedCloseDate
+ * Enforces stage transition business rules:
+ *  - 'won'  → requires expectedCloseDate
+ *  - 'lost' → requires lostReason
  */
 const updateStageSchema = z
   .object({
-    stage:             dealStageEnum,
-    lostReason:        z.string().optional(),
-    value:             z.number().positive('Value must be positive').optional(),
+    stage:      dealStageEnum,
+    lostReason: z.string().min(1, 'Lost reason cannot be empty').optional(),
+    value:      z.number().positive('Value must be positive').optional(),
     probability: z
       .number()
       .min(0,   'Probability cannot be negative')
@@ -77,16 +68,24 @@ const updateStageSchema = z
   .superRefine((data, ctx) => {
     if (data.stage === 'lost' && !data.lostReason) {
       ctx.addIssue({
-        path: ['lostReason'],
-        message: 'lostReason required when stage is lost',
-        code: z.ZodIssueCode.custom,
+        path:    ['lostReason'],
+        code:    z.ZodIssueCode.custom,
+        message: 'lostReason is required when moving a deal to Lost',
       });
     }
     if (data.stage === 'won' && !data.expectedCloseDate) {
       ctx.addIssue({
-        path: ['expectedCloseDate'],
-        message: 'expectedCloseDate required when stage is won',
-        code: z.ZodIssueCode.custom,
+        path:    ['expectedCloseDate'],
+        code:    z.ZodIssueCode.custom,
+        message: 'expectedCloseDate is required when marking a deal as Won',
+      });
+    }
+    // Probability must be 100 when marking Won
+    if (data.stage === 'won' && data.probability !== undefined && data.probability !== 100) {
+      ctx.addIssue({
+        path:    ['probability'],
+        code:    z.ZodIssueCode.custom,
+        message: 'Probability must be 100 when marking a deal as Won',
       });
     }
   });

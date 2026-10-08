@@ -1,8 +1,7 @@
 'use strict';
 
 const { z } = require('zod');
-
-const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+const { objectIdRegex, phoneSchema } = require('./common.validators');
 
 const addressSchema = z.object({
   street:  z.string().optional(),
@@ -16,7 +15,7 @@ const addressSchema = z.object({
 const createCustomerSchema = z.object({
   name:         z.string().min(1, 'Customer name is required'),
   email:        z.string().email('Invalid email address').optional(),
-  phone:        z.string().optional(),
+  phone:        phoneSchema,
   company:      z.string().optional(),
   address:      addressSchema,
   originalLead: z.string().regex(objectIdRegex, 'Invalid lead ID').optional(),
@@ -24,16 +23,16 @@ const createCustomerSchema = z.object({
   status:       z.enum(['active', 'inactive']).optional(),
 });
 
-/** Schema for PUT /api/customers/:id — all fields optional, name cannot be cleared */
+/** Schema for PUT /api/customers/:id */
 const updateCustomerSchema = z.object({
   name:       z.string().min(1, 'Customer name cannot be empty').optional(),
   email:      z.string().email('Invalid email address').optional(),
-  phone:      z.string().optional(),
+  phone:      phoneSchema,
   company:    z.string().optional(),
   address:    addressSchema,
   assignedTo: z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
   status:     z.enum(['active', 'inactive']).optional(),
-  // originalLead is NOT updatable after creation — set during creation/conversion only
+  // originalLead intentionally excluded — immutable after creation
 });
 
 module.exports = { createCustomerSchema, updateCustomerSchema };

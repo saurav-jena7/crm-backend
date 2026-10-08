@@ -1,8 +1,7 @@
 'use strict';
 
 const { z } = require('zod');
-
-const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+const { objectIdRegex } = require('./common.validators');
 
 /** Schema for POST /api/activities */
 const createActivitySchema = z.object({
@@ -13,8 +12,15 @@ const createActivitySchema = z.object({
   title:       z.string().min(1, 'Activity title is required'),
   description: z.string().optional(),
   assignedTo:  z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
-  dueDate:     z.string().optional(), // ISO date string — flexible format
-  // relatedTo is optional — a reminder or note may be user-level only
+  // Accept any parseable date string — flexible for API clients
+  dueDate: z
+    .string()
+    .refine(
+      (val) => !val || !isNaN(new Date(val).getTime()),
+      { message: 'Invalid date format for dueDate' }
+    )
+    .optional(),
+  // relatedTo is optional — user-level reminders/notes may not link to an entity
   relatedTo: z
     .object({
       entityId:   z.string().regex(objectIdRegex, 'Invalid entity ID'),
@@ -27,17 +33,23 @@ const createActivitySchema = z.object({
 
 /**
  * Schema for PUT /api/activities/:id
- * All fields optional. relatedTo cannot change entity type after creation
- * (prevents orphaned timeline entries).
+ * relatedTo intentionally excluded — immutable after creation.
  */
 const updateActivitySchema = z.object({
-  type:        z.enum(['call', 'email', 'meeting', 'demo', 'follow_up', 'reminder', 'note']).optional(),
-  title:       z.string().min(1).optional(),
+  type:  z.enum(['call', 'email', 'meeting', 'demo', 'follow_up', 'reminder', 'note']).optional(),
+  title: z.string().min(1, 'Activity title cannot be empty').optional(),
   description: z.string().optional(),
-  assignedTo:  z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
-  dueDate:     z.string().optional(),
-  status:      z.enum(['pending', 'completed', 'overdue']).optional(),
-  // relatedTo intentionally excluded from updates — set at creation only
+  assignedTo: z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
+  dueDate: z
+    .string()
+    .refine(
+      (val) => !val || !isNaN(new Date(val).getTime()),
+      { message: 'Invalid date format for dueDate' }
+    )
+    .optional(),
+  // status can be updated manually (e.g. reopen a completed activity)
+  status: z.enum(['pending', 'completed', 'overdue']).optional(),
+  // relatedTo excluded — cannot change entity association after creation
 });
 
 module.exports = { createActivitySchema, updateActivitySchema };

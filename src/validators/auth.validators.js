@@ -1,6 +1,7 @@
 'use strict';
 
 const { z } = require('zod');
+const { phoneSchema } = require('./common.validators');
 
 /** Schema for POST /api/auth/register */
 const registerSchema = z.object({
@@ -10,13 +11,13 @@ const registerSchema = z.object({
     .string()
     .min(8, 'Password must be at least 8 characters')
     .regex(/^(?=.*[A-Za-z])(?=.*\d)/, 'Password must contain letters and numbers'),
-  role: z.enum(['admin', 'sales_manager', 'sales_executive']).optional(),
-  phone: z.string().optional(),
+  role:  z.enum(['admin', 'sales_manager', 'sales_executive']).optional(),
+  phone: phoneSchema,
 });
 
 /** Schema for POST /api/auth/login */
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email:    z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
