@@ -2,7 +2,28 @@
 
 const { z } = require('zod');
 
-const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+const objectIdRegex   = /^[0-9a-fA-F]{24}$/;
+
+/**
+ * Validates that an expectedCloseDate string is not in the past.
+ * Allows today's date (compares date only, not time).
+ */
+const futureDateCheck = (val, ctx) => {
+  if (!val) return; // optional field — absence is fine
+  const inputDate = new Date(val);
+  if (isNaN(inputDate.getTime())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid date format' });
+    return;
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (inputDate < today) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Expected close date cannot be in the past',
+    });
+  }
+};
 
 const dealStageEnum = z.enum([
   'qualification',
@@ -27,7 +48,7 @@ const createDealSchema = z.object({
     .min(0,   'Probability cannot be negative')
     .max(100, 'Probability cannot exceed 100')
     .optional(),
-  expectedCloseDate: z.string().optional(),
+  expectedCloseDate: z.string().optional().superRefine(futureDateCheck),
   // stage intentionally omitted — use PATCH /api/deals/:id/stage to transition stages
   description: z.string().optional(),
 });
@@ -43,15 +64,15 @@ const updateDealSchema = createDealSchema.partial();
  */
 const updateStageSchema = z
   .object({
-    stage: dealStageEnum,
-    lostReason: z.string().optional(),
-    value: z.number().positive('Value must be positive').optional(),
+    stage:             dealStageEnum,
+    lostReason:        z.string().optional(),
+    value:             z.number().positive('Value must be positive').optional(),
     probability: z
       .number()
-      .min(0, 'Probability cannot be negative')
+      .min(0,   'Probability cannot be negative')
       .max(100, 'Probability cannot exceed 100')
       .optional(),
-    expectedCloseDate: z.string().optional(),
+    expectedCloseDate: z.string().optional().superRefine(futureDateCheck),
   })
   .superRefine((data, ctx) => {
     if (data.stage === 'lost' && !data.lostReason) {

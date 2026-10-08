@@ -271,6 +271,16 @@ exports.updateDealStage = async (id, stageData, user) => {
     if (!effectiveCloseDate) {
       throw new AppError('Expected close date is required to mark a deal as won', 400);
     }
+    // Close date business validation — must not be unreasonably far in the past
+    const closeDate = new Date(effectiveCloseDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    // Allow backdating by up to 30 days (real-world deals close before they're recorded)
+    const minAllowed = new Date(today);
+    minAllowed.setDate(minAllowed.getDate() - 30);
+    if (closeDate < minAllowed) {
+      throw new AppError('Expected close date cannot be more than 30 days in the past', 400);
+    }
   }
 
   // ── Lost stage requirements ───────────────────────────────────────────────
