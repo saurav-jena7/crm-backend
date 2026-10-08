@@ -56,8 +56,18 @@ const limiter = rateLimit({
 });
 app.use('/api', limiter);
 
+// ── Stricter rate limit on auth routes (brute-force protection) ───────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many authentication attempts, please try again later.' },
+  skipSuccessfulRequests: true, // Only count failed attempts
+});
+
 // ── API Routes ────────────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/customers', customerRoutes);

@@ -16,8 +16,13 @@ const COOKIE_OPTIONS = {
 exports.register = async (req, res, next) => {
   try {
     const { user, accessToken, refreshToken } = await authService.register(req.body);
+    // Store refresh token in httpOnly cookie — never expose in body
     res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
-    res.status(201).json({ success: true, data: { user, accessToken } });
+    res.status(201).json({
+      success: true,
+      message: 'Registration successful',
+      data: { user, accessToken },
+    });
   } catch (err) {
     next(err);
   }
@@ -30,8 +35,13 @@ exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const { user, accessToken, refreshToken } = await authService.login(email, password);
+    // Store refresh token in httpOnly cookie — never expose in body
     res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
-    res.status(200).json({ success: true, data: { user, accessToken } });
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      data: { user, accessToken },
+    });
   } catch (err) {
     next(err);
   }
@@ -52,13 +62,20 @@ exports.logout = async (req, res, next) => {
 
 /**
  * POST /api/auth/refresh-token
+ * Refresh token is read from the httpOnly cookie first, then req.body as fallback (for API clients).
+ * Only the new accessToken is returned in the JSON body — refreshToken stays in the cookie only.
  */
 exports.refreshToken = async (req, res, next) => {
   try {
     const token = req.cookies.refreshToken || req.body.refreshToken;
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Refresh token not provided' });
+    }
     const { accessToken, refreshToken } = await authService.refreshTokens(token);
+    // Rotate the refresh token cookie silently
     res.cookie('refreshToken', refreshToken, COOKIE_OPTIONS);
-    res.status(200).json({ success: true, data: { accessToken, refreshToken } });
+    // Only return accessToken in the body — never expose refreshToken in JSON
+    res.status(200).json({ success: true, message: 'Token refreshed successfully', data: { accessToken } });
   } catch (err) {
     next(err);
   }
