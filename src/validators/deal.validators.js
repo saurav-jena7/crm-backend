@@ -44,8 +44,7 @@ const updateDealSchema = z.object({
   probability: z.number().min(0).max(100).optional(),
   expectedCloseDate: z.string().optional().superRefine(futureDateCheck),
   description: z.string().optional(),
-  // stage intentionally excluded
-});
+}).strict(); // .strict() rejects any unknown fields — including 'stage'
 
 /**
  * Schema for PATCH /api/deals/:id/stage
