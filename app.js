@@ -70,6 +70,15 @@ app.use('/api/timeline', timelineRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/config', configRoutes);
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'CRM Backend API is running',
+    docs: '/api/docs',
+    health: '/health',
+  });
+});
+
 app.get('/health', (req, res) => {
   res.status(200).json({ success: true, message: 'CRM API is running' });
 });
