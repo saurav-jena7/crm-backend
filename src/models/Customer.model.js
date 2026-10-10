@@ -35,7 +35,6 @@ const customerSchema = new mongoose.Schema(
       trim: true,
     },
     address: addressSchema,
-    // Relationship: the lead this customer was converted from
     originalLead: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Lead',
@@ -61,10 +60,8 @@ const customerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound indexes for common query patterns
 customerSchema.index({ status: 1, assignedTo: 1 });
 customerSchema.index({ createdAt: -1 });
-// Text index for keyword search
 customerSchema.index({ name: 'text', email: 'text', company: 'text' });
 
 const Customer = mongoose.model('Customer', customerSchema);

@@ -54,22 +54,15 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Additional compound indexes for common query patterns
 userSchema.index({ role: 1, isActive: 1 });
 userSchema.index({ createdAt: -1 });
 
-// Hash password before saving — only when the password field was modified
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   this.password = await bcryptjs.hash(this.password, 12);
   next();
 });
 
-/**
- * Compares a plaintext candidate password against the stored hash.
- * @param {string} candidate - Plaintext password provided by the user.
- * @returns {Promise<boolean>}
- */
 userSchema.methods.comparePassword = function (candidate) {
   return bcryptjs.compare(candidate, this.password);
 };

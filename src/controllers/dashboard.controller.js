@@ -2,10 +2,6 @@
 
 const dashboardService = require('../services/dashboard.service');
 
-/**
- * GET /api/dashboard/stats
- * Admin: all stats. Manager/Executive: same global stats (no PII).
- */
 exports.getStats = async (req, res, next) => {
   try {
     const stats = await dashboardService.getStats();
@@ -15,10 +11,6 @@ exports.getStats = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/dashboard/pipeline
- * Full pipeline across all stages with count + value.
- */
 exports.getPipeline = async (req, res, next) => {
   try {
     const pipeline = await dashboardService.getPipeline();
@@ -28,10 +20,6 @@ exports.getPipeline = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/dashboard/team-performance
- * Admin: all users. Manager: their team only.
- */
 exports.getTeamPerformance = async (req, res, next) => {
   try {
     const { startDate, endDate } = req.query;
@@ -55,9 +43,6 @@ exports.getTeamPerformance = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/dashboard/recent-activities
- */
 exports.getRecentActivities = async (req, res, next) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 10;
@@ -72,11 +57,6 @@ exports.getRecentActivities = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/dashboard/team-activities
- * Sales Manager: monitor pending/overdue activities for their team.
- * Admin: can also use this (sees all team's activities by managerId query param).
- */
 exports.getTeamActivities = async (req, res, next) => {
   try {
     const { status, type } = req.query;

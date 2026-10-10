@@ -2,10 +2,6 @@
 
 const TimelineService = require('../services/timeline.service');
 
-/**
- * GET /api/timeline/lead/:id
- * Returns chronological audit trail for a lead.
- */
 exports.getLeadTimeline = async (req, res, next) => {
   try {
     const { page, limit } = req.query;
@@ -21,10 +17,6 @@ exports.getLeadTimeline = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/timeline/customer/:id
- * Returns chronological audit trail for a customer.
- */
 exports.getCustomerTimeline = async (req, res, next) => {
   try {
     const { page, limit } = req.query;
@@ -40,10 +32,6 @@ exports.getCustomerTimeline = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/timeline/deal/:id
- * Returns chronological audit trail for a deal.
- */
 exports.getDealTimeline = async (req, res, next) => {
   try {
     const { page, limit } = req.query;

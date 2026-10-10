@@ -11,7 +11,6 @@ const addressSchema = z.object({
   zip:     z.string().optional(),
 }).optional();
 
-/** Schema for POST /api/customers */
 const createCustomerSchema = z.object({
   name:         z.string().min(1, 'Customer name is required'),
   email:        z.string().email('Invalid email address').optional(),
@@ -23,7 +22,6 @@ const createCustomerSchema = z.object({
   status:       z.enum(['active', 'inactive']).optional(),
 });
 
-/** Schema for PUT /api/customers/:id */
 const updateCustomerSchema = z.object({
   name:       z.string().min(1, 'Customer name cannot be empty').optional(),
   email:      z.string().email('Invalid email address').optional(),

@@ -2,10 +2,6 @@
 
 const customerService = require('../services/customer.service');
 
-/**
- * GET /api/customers
- * Query params: page, limit, sort, status, assignedTo, search, dateFrom, dateTo
- */
 exports.getAllCustomers = async (req, res, next) => {
   try {
     const {
@@ -33,10 +29,6 @@ exports.getAllCustomers = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/customers/:id
- * Returns customer with populated originalLead and associated deals.
- */
 exports.getCustomer = async (req, res, next) => {
   try {
     const { customer, deals } = await customerService.getCustomer(req.params.id, req.user);
@@ -50,9 +42,6 @@ exports.getCustomer = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/customers
- */
 exports.createCustomer = async (req, res, next) => {
   try {
     const customer = await customerService.createCustomer({
@@ -69,9 +58,6 @@ exports.createCustomer = async (req, res, next) => {
   }
 };
 
-/**
- * PUT /api/customers/:id
- */
 exports.updateCustomer = async (req, res, next) => {
   try {
     const customer = await customerService.updateCustomer(req.params.id, req.body, req.user);
@@ -85,9 +71,6 @@ exports.updateCustomer = async (req, res, next) => {
   }
 };
 
-/**
- * DELETE /api/customers/:id
- */
 exports.deleteCustomer = async (req, res, next) => {
   try {
     await customerService.deleteCustomer(req.params.id);

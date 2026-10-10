@@ -3,7 +3,6 @@
 const { z } = require('zod');
 const { phoneSchema } = require('./common.validators');
 
-/** Schema for POST /api/auth/register */
 const registerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name cannot exceed 100 characters'),
   email: z.string().email('Invalid email address'),
@@ -15,13 +14,11 @@ const registerSchema = z.object({
   phone: phoneSchema,
 });
 
-/** Schema for POST /api/auth/login */
 const loginSchema = z.object({
   email:    z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
-/** Schema for POST /api/auth/refresh */
 const refreshTokenSchema = z.object({
   refreshToken: z.string().optional(),
 });

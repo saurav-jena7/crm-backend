@@ -2,11 +2,6 @@
 
 const dealService = require('../services/deal.service');
 
-/**
- * GET /api/deals
- * Query params: page, limit, sort, stage, assignedTo, customer, lead,
- *               minValue, maxValue, closingDateFrom, closingDateTo, search
- */
 exports.getAllDeals = async (req, res, next) => {
   try {
     const {
@@ -41,9 +36,6 @@ exports.getAllDeals = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/deals/:id
- */
 exports.getDeal = async (req, res, next) => {
   try {
     const deal = await dealService.getDeal(req.params.id, req.user);
@@ -57,9 +49,6 @@ exports.getDeal = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/deals
- */
 exports.createDeal = async (req, res, next) => {
   try {
     const deal = await dealService.createDeal({ ...req.body, createdBy: req.user._id });
@@ -73,9 +62,6 @@ exports.createDeal = async (req, res, next) => {
   }
 };
 
-/**
- * PUT /api/deals/:id
- */
 exports.updateDeal = async (req, res, next) => {
   try {
     const deal = await dealService.updateDeal(req.params.id, req.body, req.user);
@@ -89,9 +75,6 @@ exports.updateDeal = async (req, res, next) => {
   }
 };
 
-/**
- * DELETE /api/deals/:id
- */
 exports.deleteDeal = async (req, res, next) => {
   try {
     await dealService.deleteDeal(req.params.id);
@@ -104,9 +87,6 @@ exports.deleteDeal = async (req, res, next) => {
   }
 };
 
-/**
- * PATCH /api/deals/:id/stage
- */
 exports.updateDealStage = async (req, res, next) => {
   try {
     const deal = await dealService.updateDealStage(req.params.id, req.body, req.user);

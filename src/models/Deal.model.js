@@ -9,7 +9,6 @@ const dealSchema = new mongoose.Schema(
       required: [true, 'Deal title is required'],
       trim: true,
     },
-    // Lead → Customer → Deal relationship refs
     lead: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Lead',
@@ -72,23 +71,16 @@ const dealSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    toJSON:   { virtuals: false }, // no virtuals — using stored field instead
+    toJSON:   { virtuals: false },
     toObject: { virtuals: false },
   }
 );
 
-/**
- * Pre-save hook:
- *  1. Keep expectedRevenue in sync with value * probability/100
- *  2. Stamp wonAt / lostAt when stage transitions to terminal states
- */
 dealSchema.pre('save', function (next) {
-  // Always recalculate expectedRevenue from stored value + probability
   if (this.isModified('value') || this.isModified('probability')) {
     this.expectedRevenue = Math.round(this.value * (this.probability / 100) * 100) / 100;
   }
 
-  // Stamp terminal timestamps on stage change
   if (this.isModified('stage')) {
     if (this.stage === 'won') {
       this.wonAt  = this.wonAt  || new Date();
@@ -102,17 +94,12 @@ dealSchema.pre('save', function (next) {
   next();
 });
 
-/**
- * Pre-findOneAndUpdate hook: keep expectedRevenue in sync when updated via
- * findByIdAndUpdate (which bypasses pre-save).
- */
 dealSchema.pre('findOneAndUpdate', function (next) {
   const update = this.getUpdate();
   const val  = update.value  ?? update.$set?.value;
   const prob = update.probability ?? update.$set?.probability;
 
   if (val !== undefined || prob !== undefined) {
-    // We need both current values — fetch them or use update values
     const newVal  = val  !== undefined ? val  : null;
     const newProb = prob !== undefined ? prob : null;
 
@@ -126,7 +113,6 @@ dealSchema.pre('findOneAndUpdate', function (next) {
   next();
 });
 
-// Compound indexes for most common query patterns
 dealSchema.index({ stage: 1, assignedTo: 1 });
 dealSchema.index({ customer: 1, stage: 1 });
 dealSchema.index({ createdAt: -1 });

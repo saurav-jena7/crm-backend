@@ -3,7 +3,6 @@
 const { z } = require('zod');
 const { objectIdRegex, phoneSchema } = require('./common.validators');
 
-/** Schema for admin POST /api/users */
 const createUserSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name cannot exceed 100 characters'),
   email: z.string().email('Invalid email address'),
@@ -18,10 +17,7 @@ const createUserSchema = z.object({
   manager: z.string().regex(objectIdRegex, 'Invalid manager ID').optional().nullable(),
 });
 
-/**
- * Schema for PUT /api/users/:id
- * Password excluded — use change-password endpoint for that.
- */
+// Password excluded — use change-password endpoint for that
 const updateUserSchema = z.object({
   name:    z.string().min(1).max(100).optional(),
   email:   z.string().email('Invalid email address').optional(),
@@ -30,7 +26,6 @@ const updateUserSchema = z.object({
   manager: z.string().regex(objectIdRegex, 'Invalid manager ID').optional().nullable(),
 });
 
-/** Schema for change-password */
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required'),
   newPassword: z

@@ -1,9 +1,0 @@
-{
-  "verdict": "APPROVED",
-  "findings": [
-    "Unvalidated lead status mutation — PATCH /api/leads/:id/status has no validate() middleware. An invalid or missing status value is caught by Mongoose rather than Zod, producing a different error format from every other mutation endpoint. Add validate(z.object({ status: z.enum([...]) })) to the route.",
-    "Role self-demotion not guarded — PUT /api/users/:id accepts role changes via updateUserSchema.partial(). An admin can demote themselves or all admin accounts, locking out admin-only endpoints. Add a guard in user.service.updateUser preventing zero-admin scenarios.",
-    "Insecure cookie note missing from .env.example — secure cookie flag is tied to NODE_ENV=production. Add a comment in .env.example warning that staging deployments over HTTPS must set NODE_ENV=production."
-  ],
-  "reviewDoc": ".agents/tasks/task-crm-backend/2026-10-08-180000-review.md"
-}

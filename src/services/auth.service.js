@@ -5,11 +5,6 @@ const jwtConfig = require('../config/jwt');
 const AppError = require('../utils/AppError');
 const { sanitizeUser } = require('../utils/helpers');
 
-/**
- * Registers a new user.
- * @param {object} data - { name, email, password, role?, phone? }
- * @returns {{ user, accessToken, refreshToken }}
- */
 exports.register = async (data) => {
   // Duplicate email is caught by the global errorHandler (mongo code 11000)
   const user = await User.create(data);
@@ -23,12 +18,6 @@ exports.register = async (data) => {
   return { user: sanitizeUser(user), accessToken, refreshToken };
 };
 
-/**
- * Authenticates a user with email + password.
- * @param {string} email
- * @param {string} password
- * @returns {{ user, accessToken, refreshToken }}
- */
 exports.login = async (email, password) => {
   const user = await User.findOne({ email, isActive: true }).select('+password +refreshToken');
 
@@ -45,19 +34,10 @@ exports.login = async (email, password) => {
   return { user: sanitizeUser(user), accessToken, refreshToken };
 };
 
-/**
- * Clears the refresh token stored on the user document (logout).
- * @param {string} userId
- */
 exports.logout = async (userId) => {
   await User.findByIdAndUpdate(userId, { refreshToken: null });
 };
 
-/**
- * Rotates both tokens using a valid refresh token.
- * @param {string} token - The current refresh token.
- * @returns {{ accessToken, refreshToken }}
- */
 exports.refreshTokens = async (token) => {
   const decoded = jwtConfig.verifyRefreshToken(token);
 

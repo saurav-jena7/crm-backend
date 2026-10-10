@@ -3,7 +3,6 @@
 const { z } = require('zod');
 const { objectIdRegex } = require('./common.validators');
 
-/** Schema for POST /api/activities */
 const createActivitySchema = z.object({
   type: z.enum(
     ['call', 'email', 'meeting', 'demo', 'follow_up', 'reminder', 'note'],
@@ -12,7 +11,6 @@ const createActivitySchema = z.object({
   title:       z.string().min(1, 'Activity title is required'),
   description: z.string().optional(),
   assignedTo:  z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
-  // Accept any parseable date string — flexible for API clients
   dueDate: z
     .string()
     .refine(
@@ -31,10 +29,7 @@ const createActivitySchema = z.object({
     .optional(),
 });
 
-/**
- * Schema for PUT /api/activities/:id
- * relatedTo intentionally excluded — immutable after creation.
- */
+// relatedTo intentionally excluded — immutable after creation
 const updateActivitySchema = z.object({
   type:  z.enum(['call', 'email', 'meeting', 'demo', 'follow_up', 'reminder', 'note']).optional(),
   title: z.string().min(1, 'Activity title cannot be empty').optional(),
@@ -49,7 +44,6 @@ const updateActivitySchema = z.object({
     .optional(),
   // status can be updated manually (e.g. reopen a completed activity)
   status: z.enum(['pending', 'completed', 'overdue']).optional(),
-  // relatedTo excluded — cannot change entity association after creation
 });
 
 module.exports = { createActivitySchema, updateActivitySchema };

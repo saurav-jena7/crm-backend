@@ -12,29 +12,25 @@ const dealStageEnum = z.enum([
   'lost',
 ]);
 
-/** Schema for POST /api/deals */
 const createDealSchema = z.object({
   title:      z.string().min(1, 'Deal title is required'),
   lead:       z.string().regex(objectIdRegex, 'Invalid lead ID').optional(),
   customer:   z.string().regex(objectIdRegex, 'Invalid customer ID').optional(),
   assignedTo: z.string().regex(objectIdRegex, 'Invalid user ID').optional(),
-  // Deal value must be > 0
   value: z
     .number({ required_error: 'Deal value is required' })
     .positive('Deal value must be greater than 0'),
-  // Probability 0–100
   probability: z
     .number()
     .min(0,   'Probability cannot be negative')
     .max(100, 'Probability cannot exceed 100')
     .optional(),
-  // Date cannot be in the past
   expectedCloseDate: z.string().optional().superRefine(futureDateCheck),
   // stage intentionally omitted — use PATCH /deals/:id/stage
   description: z.string().optional(),
 });
 
-/** Schema for PUT /api/deals/:id — stage excluded, use dedicated endpoint */
+// stage excluded — use dedicated endpoint
 const updateDealSchema = z.object({
   title:       z.string().min(1).optional(),
   lead:        z.string().regex(objectIdRegex, 'Invalid lead ID').optional(),
@@ -44,14 +40,8 @@ const updateDealSchema = z.object({
   probability: z.number().min(0).max(100).optional(),
   expectedCloseDate: z.string().optional().superRefine(futureDateCheck),
   description: z.string().optional(),
-}).strict(); // .strict() rejects any unknown fields — including 'stage'
+}).strict();
 
-/**
- * Schema for PATCH /api/deals/:id/stage
- * Enforces stage transition business rules:
- *  - 'won'  → requires expectedCloseDate
- *  - 'lost' → requires lostReason
- */
 const updateStageSchema = z
   .object({
     stage:      dealStageEnum,
@@ -79,7 +69,6 @@ const updateStageSchema = z
         message: 'expectedCloseDate is required when marking a deal as Won',
       });
     }
-    // Probability must be 100 when marking Won
     if (data.stage === 'won' && data.probability !== undefined && data.probability !== 100) {
       ctx.addIssue({
         path:    ['probability'],

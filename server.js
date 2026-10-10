@@ -17,7 +17,6 @@ const start = async () => {
       );
     });
 
-    // ── Graceful shutdown on unhandled promise rejections ─────────────────────
     process.on('unhandledRejection', (err) => {
       console.error('Unhandled rejection:', err.name, err.message);
       server.close(() => {
@@ -25,7 +24,6 @@ const start = async () => {
       });
     });
 
-    // ── Graceful shutdown on uncaught exceptions ──────────────────────────────
     process.on('uncaughtException', (err) => {
       console.error('Uncaught exception:', err.name, err.message);
       process.exit(1);

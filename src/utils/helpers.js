@@ -1,12 +1,5 @@
 'use strict';
 
-/**
- * Returns skip/limit values for Mongoose pagination queries.
- * @param {object|string} query - Ignored; kept for API symmetry.
- * @param {number} page  - 1-based page number (default: 1).
- * @param {number} limit - Items per page (default: 10).
- * @returns {{ skip: number, limit: number }}
- */
 function paginate(query, page = 1, limit = 10) {
   const parsedLimit = parseInt(limit, 10);
   const parsedPage = parseInt(page, 10);
@@ -16,12 +9,6 @@ function paginate(query, page = 1, limit = 10) {
   };
 }
 
-/**
- * Converts a sort string like 'field,-field2' into a Mongoose sort object.
- * A leading '-' denotes descending order.
- * @param {string} sortStr - Comma-separated field names, '-' prefix = desc.
- * @returns {object} e.g. { field: 1, field2: -1 }
- */
 function buildSortObject(sortStr) {
   if (!sortStr || typeof sortStr !== 'string') return {};
 
@@ -36,27 +23,13 @@ function buildSortObject(sortStr) {
   }, {});
 }
 
-/**
- * Returns a plain object representation of a Mongoose user document
- * with sensitive fields removed.
- * Works with both Mongoose documents (.toObject()) and lean plain objects.
- * @param {object} userDoc - A Mongoose User document or plain object.
- * @returns {object} Plain user object without password or refreshToken.
- */
 function sanitizeUser(userDoc) {
-  // .toObject() exists on Mongoose docs; lean() results are already plain objects
   const obj = typeof userDoc.toObject === 'function' ? userDoc.toObject() : { ...userDoc };
   delete obj.password;
   delete obj.refreshToken;
   return obj;
 }
 
-/**
- * Determines whether an activity is overdue.
- * @param {Date}   dueDate - The activity's due date.
- * @param {string} status  - The activity's current status.
- * @returns {boolean} True only when dueDate is in the past and status is 'pending'.
- */
 function isOverdue(dueDate, status) {
   return dueDate < new Date() && status === 'pending';
 }

@@ -6,10 +6,6 @@ const AppError = require('../utils/AppError');
 const TimelineService = require('./timeline.service');
 const { paginate, buildSortObject } = require('../utils/helpers');
 
-/**
- * Bulk-marks pending activities whose dueDate is in the past as overdue.
- * Called before any list or single-fetch to keep status current.
- */
 exports.markOverdueActivities = async () => {
   await Activity.updateMany(
     { dueDate: { $lt: new Date() }, status: 'pending' },
@@ -17,23 +13,6 @@ exports.markOverdueActivities = async () => {
   );
 };
 
-/**
- * Returns a paginated, filtered list of activities.
- * Refreshes overdue statuses before querying.
- *
- * Filters: type, status, assignedTo, dueDateFrom, dueDateTo, relatedId, relatedType
- * Role scoping:
- *   Admin         → all activities
- *   Sales Manager → their team's activities
- *   Sales Exec    → only their own
- *
- * @param {object} filters
- * @param {object} user
- * @param {number} page
- * @param {number} limit
- * @param {string} sort
- * @returns {{ activities, pagination }}
- */
 exports.getAllActivities = async (
   filters = {},
   user,
@@ -45,21 +24,17 @@ exports.getAllActivities = async (
 
   const query = {};
 
-  // ── Explicit filters ───────────────────────────────────────────────────────
   if (filters.type)        query.type   = filters.type;
   if (filters.status)      query.status = filters.status;
-  // Filter by related entity
   if (filters.relatedId)   query['relatedTo.entityId']   = filters.relatedId;
   if (filters.relatedType) query['relatedTo.entityType'] = filters.relatedType;
 
-  // Due date range
   if (filters.dueDateFrom || filters.dueDateTo) {
     query.dueDate = {};
     if (filters.dueDateFrom) query.dueDate.$gte = new Date(filters.dueDateFrom);
     if (filters.dueDateTo)   query.dueDate.$lte = new Date(filters.dueDateTo);
   }
 
-  // ── Role-based scoping ─────────────────────────────────────────────────────
   if (user.role === 'sales_executive') {
     query.assignedTo = user._id;
   } else if (user.role === 'sales_manager') {
@@ -101,17 +76,7 @@ exports.getAllActivities = async (
   };
 };
 
-/**
- * Returns a single activity by ID.
- * Also marks it overdue if dueDate has passed.
- * Sales executives can only view their own activities.
- *
- * @param {string} id
- * @param {object} user
- * @returns {object} Activity document
- */
 exports.getActivity = async (id, user) => {
-  // Mark overdue before returning the single record
   await exports.markOverdueActivities();
 
   const activity = await Activity.findById(id)
@@ -130,12 +95,6 @@ exports.getActivity = async (id, user) => {
   return activity;
 };
 
-/**
- * Creates a new activity and records a timeline entry if linked to an entity.
- *
- * @param {object} data
- * @returns {object} Activity document
- */
 exports.createActivity = async (data) => {
   const activity = await Activity.create(data);
 
@@ -148,7 +107,7 @@ exports.createActivity = async (data) => {
     await TimelineService.createTimelineEntry({
       action:      `${activity.type} activity created`,
       entityType:  activity.relatedTo.entityType,
-      entityId:    activity.relatedTo.entityId,   // ← correct field name
+      entityId:    activity.relatedTo.entityId,
       performedBy: data.createdBy,
       description: `Activity: ${activity.title}`,
       newValue:    { type: activity.type, dueDate: activity.dueDate, status: activity.status },
@@ -158,16 +117,6 @@ exports.createActivity = async (data) => {
   return activity;
 };
 
-/**
- * Updates an activity.
- * Sales executives can only update their own activities.
- * relatedTo cannot be changed after creation.
- *
- * @param {string} id
- * @param {object} data
- * @param {object} user
- * @returns {object} Updated activity document
- */
 exports.updateActivity = async (id, data, user) => {
   const existing = await Activity.findById(id);
   if (!existing) throw new AppError('Activity not found', 404);
@@ -191,7 +140,6 @@ exports.updateActivity = async (id, data, user) => {
     .populate('assignedTo', 'name email')
     .populate('createdBy', 'name');
 
-  // Timeline entry for lead/customer/deal entities
   if (
     existing.relatedTo &&
     existing.relatedTo.entityId &&
@@ -200,7 +148,7 @@ exports.updateActivity = async (id, data, user) => {
     await TimelineService.createTimelineEntry({
       action:      'Activity updated',
       entityType:  existing.relatedTo.entityType,
-      entityId:    existing.relatedTo.entityId,   // ← correct field name
+      entityId:    existing.relatedTo.entityId,
       performedBy: user._id,
       description: `Activity: ${activity.title}`,
     });
@@ -209,15 +157,6 @@ exports.updateActivity = async (id, data, user) => {
   return activity;
 };
 
-/**
- * Deletes an activity.
- * Sales executives can only delete activities they created.
- * Admins/managers can delete any activity.
- *
- * @param {string} id
- * @param {object} user
- * @returns {object} Deleted activity document
- */
 exports.deleteActivity = async (id, user) => {
   const activity = await Activity.findById(id);
   if (!activity) throw new AppError('Activity not found', 404);
@@ -233,15 +172,6 @@ exports.deleteActivity = async (id, user) => {
   return activity;
 };
 
-/**
- * Marks an activity as completed, stamping completedAt.
- * Sales executives can only complete their own activities.
- * Backend determines overdue status independently of client input.
- *
- * @param {string} id
- * @param {object} user
- * @returns {object} Updated activity document
- */
 exports.completeActivity = async (id, user) => {
   const activity = await Activity.findById(id);
   if (!activity) throw new AppError('Activity not found', 404);
@@ -269,7 +199,7 @@ exports.completeActivity = async (id, user) => {
     await TimelineService.createTimelineEntry({
       action:      'Follow-up completed',
       entityType:  activity.relatedTo.entityType,
-      entityId:    activity.relatedTo.entityId,   // ← correct field name
+      entityId:    activity.relatedTo.entityId,
       performedBy: user._id,
       description: `Activity "${activity.title}" marked completed`,
       newValue:    { status: 'completed', completedAt: activity.completedAt },

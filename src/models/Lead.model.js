@@ -70,11 +70,9 @@ const leadSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound indexes for most common query patterns
 leadSchema.index({ status: 1, assignedTo: 1 });
 leadSchema.index({ priority: 1, status: 1 });
 leadSchema.index({ createdAt: -1 });
-// Text index for keyword search across name, email, company
 leadSchema.index({ name: 'text', email: 'text', company: 'text' });
 
 const Lead = mongoose.model('Lead', leadSchema);

@@ -9,55 +9,30 @@ const AppError = require('../utils/AppError');
 const TimelineService = require('./timeline.service');
 const { paginate, buildSortObject } = require('../utils/helpers');
 
-/**
- * Returns a paginated, filtered, sorted list of leads.
- *
- * Filters supported:
- *   status, source, priority, assignedTo — exact match
- *   search   — keyword across name, email, company (case-insensitive)
- *   dateFrom / dateTo — createdAt date range
- *
- * Role scoping:
- *   Admin          → all leads
- *   Sales Manager  → team leads (executives whose manager = this user) + unassigned
- *   Sales Executive→ only leads assigned to them
- *
- * @param {object} filters
- * @param {object} user  - { _id, role }
- * @param {number} page
- * @param {number} limit
- * @param {string} sort
- * @returns {{ leads, pagination }}
- */
 exports.getAllLeads = async (filters = {}, user, page = 1, limit = 10, sort = '-createdAt') => {
   const query = {};
 
-  // ── Exact-match filters ────────────────────────────────────────────────────
   if (filters.status)     query.status     = filters.status;
   if (filters.source)     query.source     = filters.source;
   if (filters.priority)   query.priority   = filters.priority;
   if (filters.assignedTo) query.assignedTo = filters.assignedTo;
 
-  // ── Keyword search across name, email, company ─────────────────────────────
   if (filters.search && filters.search.trim()) {
     const regex = new RegExp(filters.search.trim(), 'i');
     query.$or = [{ name: regex }, { email: regex }, { company: regex }];
   }
 
-  // ── Date-range filter on createdAt ─────────────────────────────────────────
   if (filters.dateFrom || filters.dateTo) {
     query.createdAt = {};
     if (filters.dateFrom) query.createdAt.$gte = new Date(filters.dateFrom);
     if (filters.dateTo)   query.createdAt.$lte = new Date(filters.dateTo);
   }
 
-  // ── Role-based scoping ────────────────────────────────────────────────────
   if (user.role === 'sales_executive') {
     query.assignedTo = user._id;
   } else if (user.role === 'sales_manager') {
     const teamMembers = await User.find({ manager: user._id, isActive: true }).select('_id');
     const teamIds = teamMembers.map((m) => m._id);
-    // Merge with any existing assignedTo filter
     if (filters.assignedTo) {
       // Manager drilling into a specific team member — honour it
     } else {
@@ -80,7 +55,7 @@ exports.getAllLeads = async (filters = {}, user, page = 1, limit = 10, sort = '-
       .sort(sortObj)
       .skip(skip)
       .limit(parsedLimit)
-      .lean(),           // avoid Mongoose hydration overhead on list queries
+      .lean(),
     Lead.countDocuments(query),
   ]);
 
@@ -95,13 +70,6 @@ exports.getAllLeads = async (filters = {}, user, page = 1, limit = 10, sort = '-
   };
 };
 
-/**
- * Returns a single lead by ID with populated references.
- * Sales executives can only view leads assigned to them.
- *
- * @param {string} id
- * @param {object} user  - { _id, role }
- */
 exports.getLead = async (id, user) => {
   const lead = await Lead.findById(id)
     .populate('assignedTo', 'name email role')
@@ -122,10 +90,6 @@ exports.getLead = async (id, user) => {
   return lead;
 };
 
-/**
- * Creates a new lead and records a timeline entry.
- * @param {object} data
- */
 exports.createLead = async (data) => {
   const lead = await Lead.create(data);
 
@@ -140,19 +104,10 @@ exports.createLead = async (data) => {
   return lead;
 };
 
-/**
- * Updates a lead and records a timeline entry.
- * Sales executives can only update leads assigned to them.
- *
- * @param {string} id
- * @param {object} data
- * @param {object} user - { _id, role }
- */
 exports.updateLead = async (id, data, user) => {
   const existing = await Lead.findById(id);
   if (!existing) throw new AppError('Lead not found', 404);
 
-  // Ownership check for sales executives
   if (
     user.role === 'sales_executive' &&
     String(existing.assignedTo) !== String(user._id)
@@ -190,25 +145,12 @@ exports.updateLead = async (id, data, user) => {
   return lead;
 };
 
-/**
- * Deletes a lead by ID (admin only — enforced at route level).
- * @param {string} id
- */
 exports.deleteLead = async (id) => {
   const lead = await Lead.findByIdAndDelete(id);
   if (!lead) throw new AppError('Lead not found', 404);
   return lead;
 };
 
-/**
- * Changes the status of a lead and records a timeline entry.
- * - Sales executives can only update status on leads assigned to them.
- * - 'converted' status is blocked — use the convertLead endpoint.
- *
- * @param {string} id
- * @param {string} status
- * @param {object} user - { _id, role }
- */
 exports.updateLeadStatus = async (id, status, user) => {
   const lead = await Lead.findById(id);
   if (!lead) throw new AppError('Lead not found', 404);
@@ -240,24 +182,7 @@ exports.updateLeadStatus = async (id, status, user) => {
   return lead;
 };
 
-/**
- * Assigns/reassigns a lead to a user.
- *
- * Rules (per spec section 6):
- *  - Admin can assign to any active sales_executive or sales_manager.
- *  - Sales Manager can only assign to executives on their own team
- *    (i.e. executives whose manager field === this manager's _id).
- *  - Sales Executive cannot call this endpoint (blocked at route level).
- *  - Assignee must exist, be active, and not be an admin.
- *  - Assignment change is recorded in the timeline.
- *  - Unauthorized assignment attempts are rejected with 403.
- *
- * @param {string} id          - Lead ID
- * @param {string} assigneeId  - User ID to assign the lead to
- * @param {object} performer   - Full user object { _id, role } of the requester
- */
 exports.assignLead = async (id, assigneeId, performer) => {
-  // Validate the assignee exists and is eligible
   const assignee = await User.findById(assigneeId);
   if (!assignee)          throw new AppError('Assignee not found', 404);
   if (!assignee.isActive) throw new AppError('Cannot assign lead to an inactive user', 400);
@@ -270,7 +195,6 @@ exports.assignLead = async (id, assigneeId, performer) => {
     if (assignee.role !== 'sales_executive') {
       throw new AppError('Sales managers can only assign leads to sales executives', 400);
     }
-    // Check the executive belongs to this manager's team
     const isTeamMember =
       assignee.manager && String(assignee.manager) === String(performer._id);
     if (!isTeamMember) {
@@ -303,24 +227,6 @@ exports.assignLead = async (id, assigneeId, performer) => {
   return lead.populate('assignedTo', 'name email role');
 };
 
-/**
- * Converts a qualified lead into a Customer + Deal atomically (MongoDB transaction).
- *
- * Requirements (spec section 7):
- *  - Only qualified leads can be converted.
- *  - Already-converted leads are rejected.
- *  - Customer references the original lead (originalLead field).
- *  - Deal references both customer and lead.
- *  - MongoDB transaction ensures no partial conversion leaves inconsistent data.
- *  - Three timeline entries are created inside the transaction.
- *  - Sales Executives can only convert leads assigned to them.
- *  - Admins/Managers can convert any qualified lead.
- *
- * @param {string} id
- * @param {object} conversionData - { dealTitle, dealValue, dealStage, expectedCloseDate, customerData? }
- * @param {object} performer      - Full user object { _id, role }
- * @returns {{ lead, customer, deal }}
- */
 exports.convertLead = async (
   id,
   { dealTitle, dealValue, dealStage, expectedCloseDate, customerData = {} },
@@ -330,7 +236,6 @@ exports.convertLead = async (
   session.startTransaction();
 
   try {
-    // ── 1. Validate lead eligibility ───────────────────────────────────────────
     const lead = await Lead.findById(id).session(session);
     if (!lead) throw new AppError('Lead not found', 404);
 
@@ -344,7 +249,6 @@ exports.convertLead = async (
       );
     }
 
-    // ── 2. Role-based access check ────────────────────────────────────────────
     if (
       performer.role === 'sales_executive' &&
       String(lead.assignedTo) !== String(performer._id)
@@ -352,8 +256,7 @@ exports.convertLead = async (
       throw new AppError('You can only convert leads assigned to you', 403);
     }
 
-    // ── 3. Create Customer — originalLead is always set from the lead, never from customerData ──
-    // customerData can only override name/email/phone/company/address for the customer record.
+    // customerData can only override name/email/phone/company for the customer record
     const safeCustomerData = {
       name:    customerData.name    || lead.name,
       email:   customerData.email   || lead.email,
@@ -365,20 +268,19 @@ exports.convertLead = async (
     const [customer] = await Customer.create(
       [{
         ...safeCustomerData,
-        originalLead: lead._id,      // always set — required for Lead→Customer relationship
+        originalLead: lead._id,
         assignedTo:   lead.assignedTo,
-        createdBy:    performer._id, // always set — cannot be overridden by client
+        createdBy:    performer._id,
         status:       'active',
       }],
       { session }
     );
 
-    // ── 4. Create Deal — references both lead AND customer ────────────────────
     const [deal] = await Deal.create(
       [{
         title:             dealTitle,
-        lead:              lead._id,       // Lead reference
-        customer:          customer._id,   // Customer reference
+        lead:              lead._id,
+        customer:          customer._id,
         assignedTo:        lead.assignedTo,
         value:             dealValue,
         probability:       dealStage === 'won' ? 100 : 0,
@@ -390,7 +292,6 @@ exports.convertLead = async (
       { session }
     );
 
-    // ── 5. Mark lead as converted — atomic with Customer+Deal creation ────────
     const updatedLead = await Lead.findByIdAndUpdate(
       id,
       {
@@ -402,7 +303,6 @@ exports.convertLead = async (
       { session, new: true }
     );
 
-    // ── 6. Timeline entries — all inside the transaction ──────────────────────
     await TimelineService.createTimelineEntry({
       action:      'Lead converted',
       entityType:  'lead',
@@ -438,10 +338,8 @@ exports.convertLead = async (
       session,
     });
 
-    // ── 7. Commit — all three documents are persisted atomically ──────────────
     await session.commitTransaction();
 
-    // Populate cross-references to show full Lead→Customer→Deal chain in response
     const populatedCustomer = await Customer.findById(customer._id)
       .populate('originalLead', 'name email status')
       .populate('assignedTo', 'name email role');
@@ -457,7 +355,6 @@ exports.convertLead = async (
       deal:     populatedDeal,
     };
   } catch (err) {
-    // Abort rolls back Customer + Deal creation if anything above failed
     await session.abortTransaction();
     throw err;
   } finally {

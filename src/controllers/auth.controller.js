@@ -10,9 +10,6 @@ const COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };
 
-/**
- * POST /api/auth/register
- */
 exports.register = async (req, res, next) => {
   try {
     const { user, accessToken, refreshToken } = await authService.register(req.body);
@@ -28,9 +25,6 @@ exports.register = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/auth/login
- */
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -47,9 +41,6 @@ exports.login = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/auth/logout
- */
 exports.logout = async (req, res, next) => {
   try {
     await authService.logout(req.user._id);
@@ -60,11 +51,6 @@ exports.logout = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/auth/refresh-token
- * Refresh token is read from the httpOnly cookie first, then req.body as fallback (for API clients).
- * Only the new accessToken is returned in the JSON body — refreshToken stays in the cookie only.
- */
 exports.refreshToken = async (req, res, next) => {
   try {
     const token = req.cookies.refreshToken || req.body.refreshToken;
@@ -81,9 +67,6 @@ exports.refreshToken = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/auth/me
- */
 exports.getMe = async (req, res, next) => {
   try {
     res.status(200).json({ success: true, data: { user: sanitizeUser(req.user) } });

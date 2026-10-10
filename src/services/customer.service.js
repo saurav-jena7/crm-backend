@@ -7,22 +7,6 @@ const AppError = require('../utils/AppError');
 const TimelineService = require('./timeline.service');
 const { paginate, buildSortObject } = require('../utils/helpers');
 
-/**
- * Returns a paginated, filtered, sorted list of customers.
- *
- * Filters: status, assignedTo, search (name/email/company), dateFrom, dateTo
- * Role scoping:
- *   Admin         → all customers
- *   Sales Manager → team customers (assignedTo in their team) + unassigned
- *   Sales Exec    → only their own customers
- *
- * @param {object} filters
- * @param {object} user
- * @param {number} page
- * @param {number} limit
- * @param {string} sort
- * @returns {{ customers, pagination }}
- */
 exports.getAllCustomers = async (
   filters = {},
   user,
@@ -32,24 +16,20 @@ exports.getAllCustomers = async (
 ) => {
   const query = {};
 
-  // ── Exact-match filters ────────────────────────────────────────────────────
   if (filters.status)     query.status     = filters.status;
   if (filters.assignedTo) query.assignedTo = filters.assignedTo;
 
-  // ── Keyword search across name, email, company ─────────────────────────────
   if (filters.search && filters.search.trim()) {
     const regex = new RegExp(filters.search.trim(), 'i');
     query.$or = [{ name: regex }, { email: regex }, { company: regex }];
   }
 
-  // ── Date-range filter on createdAt ─────────────────────────────────────────
   if (filters.dateFrom || filters.dateTo) {
     query.createdAt = {};
     if (filters.dateFrom) query.createdAt.$gte = new Date(filters.dateFrom);
     if (filters.dateTo)   query.createdAt.$lte = new Date(filters.dateTo);
   }
 
-  // ── Role-based scoping ────────────────────────────────────────────────────
   if (user.role === 'sales_executive') {
     query.assignedTo = user._id;
   } else if (user.role === 'sales_manager') {
@@ -91,15 +71,6 @@ exports.getAllCustomers = async (
   };
 };
 
-/**
- * Returns a single customer by ID.
- * Populates: originalLead, assignedTo, createdBy, and associated deals.
- * Sales executives can only view customers assigned to them.
- *
- * @param {string} id
- * @param {object} user
- * @returns {object} Customer document with associated deals
- */
 exports.getCustomer = async (id, user) => {
   const customer = await Customer.findById(id)
     .populate('originalLead', 'name email status source priority convertedAt')
@@ -108,7 +79,6 @@ exports.getCustomer = async (id, user) => {
 
   if (!customer) throw new AppError('Customer not found', 404);
 
-  // Ownership check for sales executives
   if (
     user.role === 'sales_executive' &&
     String(customer.assignedTo?._id || customer.assignedTo) !== String(user._id)
@@ -124,11 +94,6 @@ exports.getCustomer = async (id, user) => {
   return { customer, deals };
 };
 
-/**
- * Creates a new customer and records a timeline entry.
- * @param {object} data
- * @returns {object} Customer document
- */
 exports.createCustomer = async (data) => {
   const customer = await Customer.create(data);
 
@@ -143,21 +108,10 @@ exports.createCustomer = async (data) => {
   return customer;
 };
 
-/**
- * Updates a customer and records a timeline entry.
- * Sales executives can only update customers assigned to them.
- * originalLead cannot be changed after creation.
- *
- * @param {string} id
- * @param {object} data
- * @param {object} user
- * @returns {object} Updated customer document
- */
 exports.updateCustomer = async (id, data, user) => {
   const existing = await Customer.findById(id);
   if (!existing) throw new AppError('Customer not found', 404);
 
-  // Ownership check for executives
   if (
     user.role === 'sales_executive' &&
     String(existing.assignedTo) !== String(user._id)
@@ -195,11 +149,6 @@ exports.updateCustomer = async (id, data, user) => {
   return customer;
 };
 
-/**
- * Deletes a customer by ID (admin/manager only — enforced at route level).
- * @param {string} id
- * @returns {object} Deleted customer document
- */
 exports.deleteCustomer = async (id) => {
   const customer = await Customer.findByIdAndDelete(id);
   if (!customer) throw new AppError('Customer not found', 404);

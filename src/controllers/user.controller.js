@@ -2,10 +2,6 @@
 
 const userService = require('../services/user.service');
 
-/**
- * GET /api/users
- * Query params: page, limit, sort, role, isActive, search
- */
 exports.getAllUsers = async (req, res, next) => {
   try {
     const { page, limit, sort, role, isActive, search } = req.query;
@@ -29,9 +25,6 @@ exports.getAllUsers = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/users/:id
- */
 exports.getUserById = async (req, res, next) => {
   try {
     const user = await userService.getUserById(req.params.id);
@@ -45,9 +38,6 @@ exports.getUserById = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/users
- */
 exports.createUser = async (req, res, next) => {
   try {
     const user = await userService.createUser(req.body);
@@ -61,9 +51,6 @@ exports.createUser = async (req, res, next) => {
   }
 };
 
-/**
- * PUT /api/users/:id
- */
 exports.updateUser = async (req, res, next) => {
   try {
     const user = await userService.updateUser(req.params.id, req.body, req.user._id);
@@ -77,10 +64,6 @@ exports.updateUser = async (req, res, next) => {
   }
 };
 
-/**
- * PATCH /api/users/:id/status
- * Body: { isActive: true | false }
- */
 exports.toggleUserStatus = async (req, res, next) => {
   try {
     const { isActive } = req.body;
@@ -101,10 +84,6 @@ exports.toggleUserStatus = async (req, res, next) => {
   }
 };
 
-/**
- * DELETE /api/users/:id
- * Soft-delete: sets isActive=false
- */
 exports.deleteUser = async (req, res, next) => {
   try {
     const user = await userService.deleteUser(req.params.id, req.user._id);

@@ -33,17 +33,14 @@ const activitySchema = new mongoose.Schema(
       default: 'pending',
       index: true,
     },
-    // An activity may be associated with: Lead, Customer, Deal, or User
     relatedTo: {
-      // The ID of the related entity
       entityId: {
         type: mongoose.Schema.Types.ObjectId,
         index: true,
       },
-      // The type of the related entity
       entityType: {
         type: String,
-        enum: ['lead', 'customer', 'deal', 'user'],  // spec: Lead, Customer, Deal, User
+        enum: ['lead', 'customer', 'deal', 'user'],
       },
     },
     createdBy: {
@@ -59,7 +56,6 @@ const activitySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound indexes for common query patterns
 activitySchema.index({ status: 1, dueDate: 1 });
 activitySchema.index({ assignedTo: 1, status: 1 });
 activitySchema.index({ 'relatedTo.entityId': 1, 'relatedTo.entityType': 1 });

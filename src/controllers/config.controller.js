@@ -2,9 +2,6 @@
 
 const configService = require('../services/config.service');
 
-/**
- * GET /api/config
- */
 exports.getAllConfig = async (req, res, next) => {
   try {
     const configs = await configService.getAllConfig();
@@ -14,9 +11,6 @@ exports.getAllConfig = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/config/:key
- */
 exports.getConfig = async (req, res, next) => {
   try {
     const config = await configService.getConfig(req.params.key);
@@ -26,9 +20,6 @@ exports.getConfig = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/config
- */
 exports.setConfig = async (req, res, next) => {
   try {
     const { key, value, description } = req.body;
@@ -39,9 +30,6 @@ exports.setConfig = async (req, res, next) => {
   }
 };
 
-/**
- * DELETE /api/config/:key
- */
 exports.deleteConfig = async (req, res, next) => {
   try {
     await configService.deleteConfig(req.params.key);

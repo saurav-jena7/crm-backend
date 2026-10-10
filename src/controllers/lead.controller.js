@@ -2,12 +2,6 @@
 
 const leadService = require('../services/lead.service');
 
-/**
- * GET /api/leads
- * Query params: page, limit, sort, status, source, priority, assignedTo,
- *               search (keyword), dateFrom, dateTo
- * Multiple filters are supported in a single request.
- */
 exports.getAllLeads = async (req, res, next) => {
   try {
     const {
@@ -38,9 +32,6 @@ exports.getAllLeads = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/leads/:id
- */
 exports.getLead = async (req, res, next) => {
   try {
     const lead = await leadService.getLead(req.params.id, req.user);
@@ -54,9 +45,6 @@ exports.getLead = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/leads
- */
 exports.createLead = async (req, res, next) => {
   try {
     const lead = await leadService.createLead({ ...req.body, createdBy: req.user._id });
@@ -70,9 +58,6 @@ exports.createLead = async (req, res, next) => {
   }
 };
 
-/**
- * PUT /api/leads/:id
- */
 exports.updateLead = async (req, res, next) => {
   try {
     const lead = await leadService.updateLead(req.params.id, req.body, req.user);
@@ -86,9 +71,6 @@ exports.updateLead = async (req, res, next) => {
   }
 };
 
-/**
- * DELETE /api/leads/:id
- */
 exports.deleteLead = async (req, res, next) => {
   try {
     await leadService.deleteLead(req.params.id);
@@ -101,9 +83,6 @@ exports.deleteLead = async (req, res, next) => {
   }
 };
 
-/**
- * PATCH /api/leads/:id/status
- */
 exports.updateLeadStatus = async (req, res, next) => {
   try {
     const lead = await leadService.updateLeadStatus(req.params.id, req.body.status, req.user);
@@ -117,9 +96,6 @@ exports.updateLeadStatus = async (req, res, next) => {
   }
 };
 
-/**
- * PATCH /api/leads/:id/assign
- */
 exports.assignLead = async (req, res, next) => {
   try {
     const lead = await leadService.assignLead(req.params.id, req.body.assignedTo, req.user);
@@ -133,11 +109,6 @@ exports.assignLead = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/leads/:id/convert
- * Returns the updated lead (with convertedCustomer + convertedDeal refs),
- * the new customer, and the new deal — showing the full Lead→Customer→Deal chain.
- */
 exports.convertLead = async (req, res, next) => {
   try {
     const { lead, customer, deal } = await leadService.convertLead(

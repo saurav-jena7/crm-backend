@@ -2,12 +2,6 @@
 
 const activityService = require('../services/activity.service');
 
-/**
- * GET /api/activities
- * Query params: page, limit, sort, type, status, assignedTo,
- *               dueDateFrom, dueDateTo, relatedId, relatedType
- * Backend auto-marks overdue before returning results.
- */
 exports.getAllActivities = async (req, res, next) => {
   try {
     const {
@@ -39,10 +33,6 @@ exports.getAllActivities = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/activities/:id
- * Backend determines overdue status before returning.
- */
 exports.getActivity = async (req, res, next) => {
   try {
     const activity = await activityService.getActivity(req.params.id, req.user);
@@ -56,9 +46,6 @@ exports.getActivity = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/activities
- */
 exports.createActivity = async (req, res, next) => {
   try {
     const activity = await activityService.createActivity({
@@ -76,9 +63,6 @@ exports.createActivity = async (req, res, next) => {
   }
 };
 
-/**
- * PUT /api/activities/:id
- */
 exports.updateActivity = async (req, res, next) => {
   try {
     const activity = await activityService.updateActivity(req.params.id, req.body, req.user);
@@ -92,9 +76,6 @@ exports.updateActivity = async (req, res, next) => {
   }
 };
 
-/**
- * DELETE /api/activities/:id
- */
 exports.deleteActivity = async (req, res, next) => {
   try {
     await activityService.deleteActivity(req.params.id, req.user);
@@ -107,9 +88,6 @@ exports.deleteActivity = async (req, res, next) => {
   }
 };
 
-/**
- * PATCH /api/activities/:id/complete
- */
 exports.completeActivity = async (req, res, next) => {
   try {
     const activity = await activityService.completeActivity(req.params.id, req.user);

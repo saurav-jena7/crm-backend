@@ -2,10 +2,6 @@
 
 const mongoose = require('mongoose');
 
-/**
- * CRM Configuration — singleton-style document.
- * Admin can read/update these settings via /api/config.
- */
 const configSchema = new mongoose.Schema(
   {
     key: {
